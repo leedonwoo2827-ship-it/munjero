@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>문제로</title>
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="stylesheet"
+      href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
+<link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body data-rail="open">
+
+<div class="app">
+
+  <!-- ══ 좌측 레일 ══ -->
+  <nav class="rail" id="rail">
+    <div class="side-brand">
+      <span class="brand-mark" onclick="Shell.goto('start')">시험지</span>
+      <span class="brand-name hide-collapsed">문제로</span>
+      <button class="rail-toggle" id="railToggle" title="레일 접기">&#9776;</button>
+    </div>
+
+    <button class="btn-new" id="btnNew">
+      <span class="plus">+</span><span class="hide-collapsed">새 시험지</span>
+    </button>
+
+    <div class="rail-scroll">
+      <ul class="nav" id="nav">
+        <li><a data-go="board"><span class="i">&#9707;</span>
+          <span class="hide-collapsed">현황판</span>
+          <span class="dest hide-collapsed">무엇이 남았나</span></a></li>
+        <li><a data-go="toc"><span class="i">&#8801;</span>
+          <span class="hide-collapsed">목차</span>
+          <span class="dest hide-collapsed">순서 · 묶음 확인</span></a></li>
+        <li><a data-go="map"><span class="i">&#9776;</span>
+          <span class="hide-collapsed">문항</span>
+          <span class="dest hide-collapsed">번호 · 내용 확정</span></a></li>
+      </ul>
+
+      <ul class="nav">
+        <li><a data-go="answer"><span class="i">&#9997;</span>
+          <span class="hide-collapsed">정답 · 해설</span>
+          <span class="dest hide-collapsed">쓰고 검토</span></a></li>
+        <li><a data-go="export"><span class="i">&#8681;</span>
+          <span class="hide-collapsed">내보내기</span>
+          <span class="dest hide-collapsed">채점기 HTML</span></a></li>
+      </ul>
+
+      <div class="nav-h hide-collapsed">최근 시험지<a id="lnkAll">전체</a></div>
+      <div class="recent hide-collapsed" id="recent">
+        <div class="side-empty">아직 없습니다.</div>
+      </div>
+    </div>
+
+    <div class="rail-wrap hide-collapsed" id="railWrap">
+      <div class="cur">
+        <span class="badge" id="curBadge">—</span>
+        <span class="t"><b id="curName">고르지 않음</b><em id="curMeta">시험지를 넣어 주세요</em></span>
+        <button class="go" id="btnWorkspace" title="워크스페이스">&#9881;</button>
+      </div>
+      <div class="outline-path" id="outRoot" title="눌러서 저장 폴더 바꾸기">…</div>
+    </div>
+  </nav>
+
+  <!-- ══ 본문 ══ -->
+  <main class="content">
+    <div class="tabs" id="tabs"></div>
+    <div class="view" id="view" tabindex="-1"></div>
+  </main>
+
+  <!-- ══ 우측 슬라이드 ══ -->
+  <aside class="side-r" id="sideR" data-open="0">
+    <button class="side-r-tab" id="sideRTab" title="열고 닫기">
+      <span class="vlabel">문항 구성</span>
+    </button>
+    <div class="side-r-body">
+      <div class="side-r-h">수정 — 유형</div>
+      <ul class="subnav" id="subnav"><li><b>아직 없습니다</b></li></ul>
+
+      <div class="side-r-h">실행현황</div>
+      <div id="runNow"><div class="idle">도는 작업 없음</div></div>
+
+      <div class="side-r-h">단계별 산출물</div>
+      <ul class="files" id="fileList"><li class="idle">시험지를 고르면 나옵니다</li></ul>
+
+      <div class="side-r-h">지난 채점기</div>
+      <ul class="vers" id="verList"><li class="idle">없음</li></ul>
+    </div>
+  </aside>
+
+</div>
+
+<div class="panel-layer" id="panelLayer" hidden></div>
+<div class="toast" id="toast"></div>
+
+<script src="/static/js/util.js"></script>
+<script src="/static/js/panel.js"></script>
+<script src="/static/js/board.js"></script>
+<script src="/static/js/views.js"></script>
+<script src="/static/js/shell.js"></script>
+</body>
+</html>

@@ -37,7 +37,7 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
-echo       pymupdf / beautifulsoup4 / lxml / pillow  OK
+echo       fastapi / uvicorn / pymupdf / bs4 / lxml / pillow  OK
 echo.
 
 REM ---------- 3. Codex CLI ----------
@@ -89,8 +89,8 @@ if errorlevel 1 (
 
 echo.
 echo ==========================================================
-echo   Setup complete. Put your exam HTML in the input folder
-echo   and run:  run.bat
+echo   Setup complete. Now run:  run.bat
+echo   It opens http://127.0.0.1:7085/ in your browser.
 echo ==========================================================
 echo.
 pause

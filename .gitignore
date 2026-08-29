@@ -9,3 +9,6 @@ _*/
 venv/
 .DS_Store
 Thumbs.db
+munjero-output/
+munjero-settings.json
+node_modules/

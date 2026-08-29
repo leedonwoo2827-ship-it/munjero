@@ -25,11 +25,42 @@ def extract(src: str, out_dir: str, exam_id: str = "", title: str = "") -> dict:
 
     if ext == ".pdf":
         return _extract_pdf(src, out_dir, exam_id, title)
-    if ext in (".hwp", ".hwpx"):
+    if ext == ".hwpx":
+        return _extract_hwpx(src, out_dir, exam_id, title)
+    if ext == ".hwp":
         return _extract_hwp(src, out_dir, exam_id, title)
+    if ext == ".docx":
+        return _extract_docx(src, out_dir, exam_id, title)
     raise SystemExit(
         "지원하지 않는 형식입니다: %s\n"
-        "  PDF 또는 HWP 를 넣어주세요. 다른 형식이면 PDF 로 내보낸 뒤 다시 시도하세요." % ext)
+        "  HTML · 워드(.docx) · 한글(.hwp) · PDF 를 넣어 주세요.\n"
+        "  .doc 는 워드에서 .docx 로 저장한 뒤 다시 시도하세요." % ext)
+
+
+def _extract_hwpx(src, out_dir, exam_id, title):
+    """hwpx 는 zip+XML 이라 hwp(OLE)와 리더가 다르다. HTML 로만 옮기고 판별은 파서에 맡긴다."""
+    from . import hwpx_html
+
+    html = hwpx_html.to_html(src)
+    path = os.path.join(out_dir, "01_extract.html")
+    io.open(path, "w", encoding="utf-8").write(html)
+    return {"path": path, "items": 0, "sections": 0, "review": 0,
+            "figures": html.count("data:image"), "deferred": True}
+
+
+def _extract_docx(src, out_dir, exam_id, title):
+    """워드는 문항을 여기서 알아내지 않고 HTML 로만 옮긴다.
+
+    문항을 잡아내는 규칙은 parse/generic.py 한 곳에만 둔다. 그래야 워드에서
+    오든 한글에서 오든 구글 문서에서 오든 같은 방식으로 읽힌다.
+    """
+    from . import docx_html
+
+    html = docx_html.to_html(src)
+    path = os.path.join(out_dir, "01_extract.html")
+    io.open(path, "w", encoding="utf-8").write(html)
+    return {"path": path, "items": 0, "sections": 0, "review": 0,
+            "figures": html.count("data:image"), "deferred": True}
 
 
 def _extract_pdf(src, out_dir, exam_id, title):

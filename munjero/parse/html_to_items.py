@@ -13,6 +13,8 @@ import re
 
 from bs4 import BeautifulSoup
 
+from . import generic
+
 CIRCLED = "①②③④⑤⑥⑦⑧⑨⑩"
 
 
@@ -80,6 +82,18 @@ def _table(node):
     return {"rows": len(trs), "cols": n_cols, "cells": cells}
 
 
+def _missing_figs(soup, base_dir) -> list:
+    out = []
+    for img in soup.find_all("img"):
+        src = (img.get("src") or "").strip()
+        if not src or src.startswith(("data:", "http:", "https:")):
+            continue
+        p = os.path.join(base_dir, src.replace("/", os.sep))
+        if not os.path.isfile(p):
+            out.append(src)
+    return out[:20]
+
+
 def parse_html(path: str) -> dict:
     soup = BeautifulSoup(open(path, encoding="utf-8").read(), "lxml")
     base_dir = os.path.dirname(os.path.abspath(path))
@@ -101,6 +115,9 @@ def parse_html(path: str) -> dict:
         "sections": [],
         "items": [],
         # 어느 문항에 붙는지 알 수 없어 부록으로 남은 그림. 버리지 않고 끝까지 들고 간다.
+        # 웹 페이지(완전)으로 저장하면 그림이 옆 폴더로 빠진다.
+        # HTML 만 올리면 그 그림들은 없는 파일을 가리킨다 — 세어서 알려 준다.
+        "missing_figures": _missing_figs(soup, base_dir),
         "appendix_figures": [
             {"src": img.get("src", ""), "caption": _txt(img.find_parent("figure"))}
             for img in soup.select(".figs figure img")
@@ -119,7 +136,7 @@ def parse_html(path: str) -> dict:
             parts.append(_txt(bq))
         stimulus[key] = "\n\n".join(p for p in parts if p)
         # 지문 원본 이미지는 그 지문을 쓰는 문항들이 함께 들고 간다
-        stim_figs[key] = [img.get("src", "") for img in sg.select(".figure img, img.fig")]
+        stim_figs[key] = [i.get("src", "") for i in sg.find_all("img") if i.get("src")]
 
     for sec in soup.select("section.exam-section"):
         doc["sections"].append({
@@ -128,8 +145,31 @@ def parse_html(path: str) -> dict:
             "boundary_confidence": sec.get("data-section-boundary-confidence", "exact"),
         })
 
+    found = soup.select(".question")
+    if not found:
+        # 워드·한글·구글독스에서 내보낸 HTML 에는 우리 클래스가 없다.
+        # 글의 생김새로 문항을 잡아내는 길로 간다.
+        rows, warns = generic.parse(soup, _table)
+        for n, g in enumerate(rows, 1):
+            doc["items"].append({
+                "id": "%s#%s" % (exam_id, g["number"]),
+                "number": g["number"], "subject": None, "subject_no": None,
+                "answer_type": g["answer_type"], "question": g["question"],
+                "passage": g["passage"] or None, "stimulus": None,
+                "code": g["code"], "tables": g["tables"] or None,
+                "figures": g["figures"], "choices": g["choices"],
+                "markers": g["markers"], "answer_index": None, "explanation": None,
+                "source": {"page": None, "confidence": 0.7},
+                "item_hash": item_hash(g["question"], g["choices"]),
+                "warnings": g["warnings"],
+                "needs_review": bool(g["warnings"]),
+            })
+        doc["extractor"] = doc["extractor"] or "generic_html@1"
+        doc["notes"] = warns
+        return doc
+
     auto = 0
-    for q in soup.select(".question"):
+    for q in found:
         sec = q.find_parent("section", class_="exam-section")
         warnings = []
 
@@ -148,7 +188,9 @@ def parse_html(path: str) -> dict:
 
         passages = [_txt(p) for p in q.select(".passage")]
         tables = [t for t in (_table(t) for t in q.select(".data-table")) if t]
-        figures = [img.get("src", "") for img in q.select(".figure img, img.fig")]
+        # 저자가 복잡한 표·수식을 캡처해서 붙여넣는 경우가 있다. 그 이미지가 내용 자체다.
+        # 클래스를 가리지 않고 문항 안의 그림을 전부 들고 간다.
+        figures = [i.get("src", "") for i in q.find_all("img") if i.get("src")]
 
         choices, markers = [], []
         for li in q.select(".choices > .choice"):

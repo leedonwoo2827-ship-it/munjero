@@ -21,6 +21,29 @@ FONT_LINK = (
 )
 
 
+def _archive(out_path: str) -> str:
+    """이전 채점기를 '이전' 폴더로 밀어 둔다.
+
+    저자가 몇 주 뒤에 문제를 고치면 다시 만들게 된다. 그때 예전 것이 그냥
+    사라지면 무엇이 어떻게 바뀌었는지 확인할 방법이 없다. 최신은 늘 같은
+    이름 하나로 두고(그걸 더블클릭하면 된다), 지난 것은 시각을 붙여 쌓는다.
+    """
+    if not os.path.isfile(out_path):
+        return ""
+    import datetime
+
+    d = os.path.join(os.path.dirname(os.path.abspath(out_path)), "이전")
+    os.makedirs(d, exist_ok=True)
+    stem, ext = os.path.splitext(os.path.basename(out_path))
+    stamp = datetime.datetime.fromtimestamp(
+        os.path.getmtime(out_path)).strftime("%y%m%d-%H%M%S")
+    dest = os.path.join(d, "%s_%s%s" % (stem, stamp, ext))
+    if not os.path.exists(dest):
+        os.replace(out_path, dest)
+        return dest
+    return ""
+
+
 def inline_json(obj) -> str:
     """문항 본문에 </script> 가 있으면 스크립트가 거기서 끊긴다.
     HTML 파서는 그게 문자열 안인지 모른다. 반드시 막는다."""
@@ -137,10 +160,12 @@ def build(items_doc, answers_doc, out_path, *, base_dir=".", no_cdn=False):
     html = html.replace("{{APP_JS}}", app)
 
     os.makedirs(os.path.dirname(os.path.abspath(out_path)) or ".", exist_ok=True)
+    archived = _archive(out_path)
     tmp = out_path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         f.write(html)
     os.replace(tmp, out_path)
 
     return {"path": out_path, "bytes": os.path.getsize(out_path),
-            "stale": stale, "missing": missing, "images": n_img, "lost_images": lost}
+            "stale": stale, "missing": missing, "images": n_img,
+            "lost_images": lost, "archived": archived}

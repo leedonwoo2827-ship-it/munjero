@@ -1,4 +1,11 @@
+# munjero - local run deps.
+# LLM calls go through the Codex CLI (ChatGPT login), so no LLM SDK and no API key.
+fastapi
+uvicorn
+python-multipart
+
 pymupdf>=1.24
 beautifulsoup4>=4.12
 lxml>=5.0
 pillow>=10.0
+python-docx>=1.1

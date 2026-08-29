@@ -4,7 +4,7 @@
 산출물은 **레포 밖**에 쌓인다. 레포는 코드만 들고 있고, 시험 내용은 밖에 남는다
 (공개 저장소에 시험지가 딸려 들어가지 않게 하려는 것이기도 하다).
 
-    <레포와 나란히>/munjero-output/
+    munjero-output/          (기본 위치. 화면 하단에서 바꿀 수 있다)
       <시험id>/
         _exam.json      이 시험의 메타와 단계별 상태
         README.md       이 폴더가 뭔지 사람이 읽는 설명
@@ -34,14 +34,52 @@ STAGES = [
 ]
 
 
+SETTINGS = os.path.join(REPO, "munjero-settings.json")
+
+
+def load_settings() -> dict:
+    if os.path.isfile(SETTINGS):
+        try:
+            return json.load(open(SETTINGS, encoding="utf-8"))
+        except Exception:
+            pass
+    return {}
+
+
+def save_settings(d: dict) -> None:
+    tmp = SETTINGS + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(d, f, ensure_ascii=False, indent=1)
+    os.replace(tmp, SETTINGS)
+
+
+def default_out_root() -> str:
+    # 프로젝트 폴더 안에 둔다. .gitignore 로 막아 두었으니 커밋되지 않는다.
+    # 화면 하단에서 다른 위치로 바꿀 수 있다.
+    return os.path.join(REPO, "munjero-output")
+
+
 def out_root(override: str = "") -> str:
+    """우선순위: 인자 > 환경변수 > 화면에서 정한 값 > 기본값."""
     if override:
         return os.path.abspath(override)
     env = os.environ.get("MUNJERO_OUT")
     if env:
         return os.path.abspath(env)
-    # 레포와 나란히 둔다. 레포 안에 두면 실수로 커밋된다.
-    return os.path.join(os.path.dirname(REPO), "munjero-output")
+    saved = (load_settings().get("out_root") or "").strip()
+    if saved:
+        return os.path.abspath(saved)
+    return default_out_root()
+
+
+def set_out_root(path: str) -> str:
+    """화면에서 출력 폴더를 바꾼다. 없으면 만든다."""
+    path = os.path.abspath(os.path.expanduser(path.strip()))
+    os.makedirs(path, exist_ok=True)
+    d = load_settings()
+    d["out_root"] = path
+    save_settings(d)
+    return path
 
 
 def exam_dir(exam_id: str, override: str = "") -> str:

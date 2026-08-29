@@ -264,7 +264,7 @@ def cmd_map(args):
     ext = os.path.splitext(src)[1].lower()
     exam_id = args.exam_id or _slug(src)
 
-    if ext in (".pdf", ".hwp", ".hwpx"):
+    if ext in (".pdf", ".hwp", ".hwpx", ".docx"):
         ns = argparse.Namespace(src=src, exam_id=exam_id, title=args.title,
                                 out_root=root)
         if cmd_extract(ns) != 0:
@@ -325,7 +325,7 @@ def cmd_run(args):
     ext = os.path.splitext(src)[1].lower()
 
     # 원본(PDF/HWP)을 주면 추출부터, 시험지 HTML 을 주면 매핑부터
-    if ext in (".pdf", ".hwp", ".hwpx"):
+    if ext in (".pdf", ".hwp", ".hwpx", ".docx"):
         ns = argparse.Namespace(src=src, exam_id=args.exam_id, title="", out_root=root)
         if cmd_extract(ns) != 0:
             return 1
@@ -408,7 +408,7 @@ def cmd_wizard(args):
     _p("  문제로 - 시험지를 채점기로 바꿉니다")
     _p("=" * 54)
     _p("")
-    pats = ("*.html", "*.pdf", "*.hwp", "*.hwpx")
+    pats = ("*.html", "*.pdf", "*.hwp", "*.hwpx", "*.docx")
     cands = []
     for pat in pats:
         cands += glob.glob(os.path.join(HERE, "input", pat))
