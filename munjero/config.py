@@ -31,6 +31,7 @@ STAGES = [
     ("02_items", "문항 JSON"),
     ("03_answers", "정답·해설 JSON"),
     ("04_grader", "채점기 HTML — 더블클릭하면 열립니다"),
+    ("05_report", "출제의 맥 — 저자에게 넘기는 자료"),
 ]
 
 
@@ -103,6 +104,7 @@ def paths(exam_id: str, override: str = "") -> dict:
         "items": os.path.join(base, "02_items", "items.json"),
         "answers": os.path.join(base, "03_answers", "answers.json"),
         "grader": os.path.join(base, "04_grader", exam_id + ".html"),
+        "report": os.path.join(base, "05_report"),
     }
 
 
@@ -157,6 +159,7 @@ README = """# {title}
     02_items/     문항 JSON
     03_answers/   정답·해설 JSON
     04_grader/    채점기 HTML — 더블클릭하면 열립니다
+    05_report/    출제의 맥 — 다음 개정판에서 어디에 힘을 줄지 봅니다
 
 ## 다시 돌리기
 

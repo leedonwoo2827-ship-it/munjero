@@ -17,8 +17,8 @@
   <!-- ══ 좌측 레일 ══ -->
   <nav class="rail" id="rail">
     <div class="side-brand">
-      <span class="brand-mark" onclick="Shell.goto('start')">시험지</span>
-      <span class="brand-name hide-collapsed">문제로</span>
+      <span class="brand-mark" onclick="Shell.goto('start')">문제로</span>
+      <span class="brand-name hide-collapsed">시험지에서 채점기까지</span>
       <button class="rail-toggle" id="railToggle" title="레일 접기">&#9776;</button>
     </div>
 
@@ -46,6 +46,9 @@
         <li><a data-go="export"><span class="i">&#8681;</span>
           <span class="hide-collapsed">내보내기</span>
           <span class="dest hide-collapsed">채점기 HTML</span></a></li>
+        <li><a data-go="report"><span class="i">&#9634;</span>
+          <span class="hide-collapsed">출제의 맥</span>
+          <span class="dest hide-collapsed">출제 경향</span></a></li>
       </ul>
 
       <div class="nav-h hide-collapsed">최근 시험지<a id="lnkAll">전체</a></div>

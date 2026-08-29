@@ -128,6 +128,12 @@ def merge(items_doc, answers_doc):
         it["confidence"] = a.get("confidence")
         it["wrong_reasons"] = a.get("wrong_reasons") or []
         it["diagram_svg"] = a.get("diagram_svg")
+        it["chapter"] = a.get("chapter") or ""
+        it["concepts"] = a.get("concepts") or []
+        it["point"] = a.get("point") or ""
+        it["level"] = a.get("level") or ""
+        it["difficulty"] = a.get("difficulty") or ""
+        it["misconception"] = a.get("misconception")
     return stale, missing
 
 
@@ -145,6 +151,7 @@ def build(items_doc, answers_doc, out_path, *, base_dir=".", no_cdn=False):
             "id", "number", "subject", "answer_type", "question", "passage",
             "tables", "figures", "choices", "markers", "answer_index",
             "explanation", "confidence", "wrong_reasons", "diagram_svg",
+            "chapter", "concepts", "point", "level", "difficulty", "misconception",
             "needs_review", "source")})
     data = {"exam_id": items_doc["exam_id"], "exam_title": items_doc["exam_title"],
             "source_file": items_doc.get("source_file", ""), "items": slim,

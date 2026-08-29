@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 
 from . import codex_client as C
@@ -22,7 +23,9 @@ SCHEMA = {
                 "type": "object",
                 "additionalProperties": False,
                 "required": ["id", "answer_index", "explanation",
-                             "confidence", "wrong_reasons", "diagram_svg"],
+                             "confidence", "wrong_reasons", "diagram_svg",
+                             "chapter", "concepts", "point", "level",
+                             "difficulty", "misconception"],
                 "properties": {
                     "id": {"type": "string"},
                     "answer_index": {"type": "integer", "minimum": -1, "maximum": 9},
@@ -31,6 +34,18 @@ SCHEMA = {
                                    "enum": ["high", "medium", "low"]},
                     "wrong_reasons": {"type": "array", "items": {"type": "string"}},
                     "diagram_svg": {"type": ["string", "null"]},
+                    # 아래 다섯은 학습자에게 보여 주는 동시에,
+                    # 모아 두면 저자가 다음 개정판에서 무엇을 보강할지 보는 근거가 된다.
+                    # 장(章) — 저자가 개정판을 볼 때 쓰는 단위.
+                    # concepts 는 너무 잘게 갈라져(25문항에 103개) 축이 못 된다.
+                    "chapter": {"type": "string"},
+                    "concepts": {"type": "array", "items": {"type": "string"}},
+                    "point": {"type": "string"},
+                    "level": {"type": "string",
+                              "enum": ["기억", "이해", "적용",
+                                       "분석", "평가", "창조"]},
+                    "difficulty": {"type": "string", "enum": ["하", "중", "상"]},
+                    "misconception": {"type": ["string", "null"]},
                 },
             },
         }
@@ -67,14 +82,97 @@ PREAMBLE = """당신은 한국 국가공인 자격시험 문제의 정답과 해
      - 색은 var(--brand-600) var(--brand-50) var(--correct) var(--wrong) var(--muted)
        currentColor none 만 쓴다. 임의의 색상값을 쓰지 마라
      - 글자는 font-size 13 안팎, text-anchor 로 정렬한다. 한글을 써도 된다
-8. 웹 검색이나 파일 읽기를 하지 마라. 주어진 텍스트와 네 지식만 쓴다.
-9. 출력은 지정된 JSON 스키마뿐이다. 다른 말을 덧붙이지 마라.
+8. chapter 는 이 문항이 속하는 **교재의 장(章)** 이다. 아래 장 목록에서 고른다.
+   목록에 없는 이름을 새로 만들지 마라. concepts 처럼 잘게 쪼개지도 마라.
+   ("미지급급여" 는 chapter 가 아니라 concepts 다.)
+9. concepts 는 이 문항이 다루는 개념 3~5개다.
+   **그 과목에서 통용되는 이름을 쓴다.** 문항마다 새 말을 지어내지 마라.
+   같은 개념은 반드시 같은 이름으로 적는다 — 이름이 흔들리면 집계가 무너진다.
+   좋은 예: "Incoterms 2010", "CIP", "위험 이전", "신용장", "감가상각"
+   나쁜 예: "인코텀즈2010규칙", "씨아이피조건", "위험이 넘어가는 시점"
+   약어와 풀이름이 함께 쓰이는 개념은 **약어 쪽**으로 통일한다(신용장이 아니라 "신용장",
+   Letter of Credit 이 아니라 "신용장" — 한국어 시험이므로 한국어 통용어가 우선).
+10. point 는 이 문항이 진짜 묻는 것 한 줄이다. 정답 자체가 아니라 **판단의 갈림길**을 적는다.
+   좋은 예: "비용 부담 지점과 위험 이전 지점이 같지 않다"
+   나쁜 예: "정답은 운송 중 전매이다"
+11. level 은 이 문항이 요구하는 사고다. 블룸 개정 분류의 여섯 단계를 쓴다.
+   기억 — 외운 것을 떠올리는가
+   이해 — 뜻을 알고 제 말로 바꿀 수 있는가
+   적용 — 새로운 사례에 규칙을 쓰는가
+   분석 — 요소로 갈라 관계를 따지는가
+   평가 — 기준을 대고 판단하는가
+   창조 — 새로 짜 맞추는가
+   자격시험 객관식은 대개 기억~분석에 몰린다. 억지로 평가·창조를 붙이지 마라.
+12. difficulty 는 그 시험을 준비하는 사람 기준으로 하 · 중 · 상.
+13. misconception 은 **틀리는 사람이 흔히 갖는 잘못된 생각**을 한 문장으로.
+   억지로 만들지 마라. 단순 암기 문항처럼 특별한 오해가 없으면 null 로 둔다.
+14. 웹 검색이나 파일 읽기를 하지 마라. 주어진 텍스트와 네 지식만 쓴다.
+15. 출력은 지정된 JSON 스키마뿐이다. 다른 말을 덧붙이지 마라.
 """
+
+
+CURRICULUM_SCHEMA = {
+    "type": "object", "additionalProperties": False,
+    "required": ["subjects"],
+    "properties": {
+        "subjects": {
+            "type": "array",
+            "items": {
+                "type": "object", "additionalProperties": False,
+                "required": ["subject", "chapters"],
+                "properties": {
+                    "subject": {"type": "string"},
+                    "chapters": {"type": "array", "items": {"type": "string"}},
+                },
+            },
+        }
+    },
+}
+
+CURRICULUM_PROMPT = """당신은 한국 국가공인 자격시험의 출제 기준을 잘 아는 사람이다.
+
+아래 시험의 **표준 커리큘럼**을 과목별 장(章) 목록으로 내라.
+
+규칙
+1. 그 시험의 공식 출제 기준·표준 교재에서 통용되는 영역 이름을 쓴다.
+   지어내지 말고, 그 분야 사람이 보면 바로 알아보는 이름으로.
+2. 한 과목에 **8~12개**. 너무 잘게 쪼개지 말고 장 단위로 굵게 잡는다.
+3. 순서는 교재가 다루는 순서대로.
+4. 과목 구분이 없는 시험이면 subject 를 "전체" 하나로 두고 장만 낸다.
+5. 웹 검색을 하지 마라. 네 지식만 쓴다.
+6. 출력은 지정된 JSON 스키마뿐이다.
+
+시험: %s
+문항에 붙어 있는 과목 구분: %s
+"""
+
+
+def curriculum(exam_title: str, subjects: list, model: str = "") -> dict:
+    """시험의 표준 커리큘럼을 한 번만 받아 둔다.
+
+    이걸 안 하면 배치마다 장 이름이 흔들려서(25문항에 개념 103개가 그랬다)
+    방사형 축을 만들 수 없다. 축은 닫힌 목록이어야 한다.
+    """
+    subs = ", ".join(s for s in subjects if s) or "(없음)"
+    try:
+        d = C.run(CURRICULUM_PROMPT % (exam_title, subs),
+                  CURRICULUM_SCHEMA, model=model, timeout=180)
+    except C.CodexError:
+        return {"subjects": []}
+    out = []
+    for s in d.get("subjects") or []:
+        ch = [c.strip() for c in (s.get("chapters") or []) if c.strip()]
+        if ch:
+            out.append({"subject": (s.get("subject") or "전체").strip(),
+                        "chapters": ch[:14]})
+    return {"subjects": out}
 
 
 def _payload(item):
     d = {"id": item["id"], "answer_type": item["answer_type"],
          "question": item["question"]}
+    if item.get("subject"):
+        d["subject"] = item["subject"]      # 과목을 알아야 개념 이름이 흔들리지 않는다
     if item.get("passage"):
         d["passage"] = item["passage"][:2500]
     if item.get("choices"):
@@ -114,12 +212,79 @@ def _md_table(t):
     return "\n".join(out)
 
 
-def build_prompt(exam_title, items):
+CH_HEAD_ONE = """
+장 목록 — chapter 는 아래 '-' 뒤의 이름을 **글자 그대로** 적는다.
+목록에 없는 이름을 새로 만들지 마라. 없으면 가장 가까운 것을 고른다.
+"""
+
+CH_HEAD_MANY = """
+장 목록 — chapter 는 아래 '-' 뒤의 이름을 **글자 그대로** 적는다.
+'과목 …' 줄은 묶음의 이름일 뿐 장이 아니다. 그 줄을 chapter 로 적지 마라.
+문항의 subject 와 같은 과목 안에서만 고른다.
+목록에 없는 이름을 새로 만들지 마라. 없으면 가장 가까운 것을 고른다.
+"""
+
+
+def build_prompt(exam_title, items, curri=None):
+    """장 목록을 닫힌 집합으로 함께 보낸다.
+
+    문항마다 장 이름을 짓게 두면 배치마다 흔들려서 방사형 축이 안 만들어진다.
+    (개념을 그렇게 뒀더니 25문항에 103개가 나왔다.)
+    """
     body = json.dumps([_payload(i) for i in items], ensure_ascii=False)
-    return "%s\n시험: %s\n\n문항:\n%s\n" % (PREAMBLE, exam_title, body)
+    ch = ""
+    if curri and curri.get("subjects"):
+        # 대괄호로 [과목] 장·장·장 을 늘어놓았더니 모델이 대괄호 안의
+        # 과목 이름을 장으로 베꼈다(무역영어 75문항 중 59개가 그랬다).
+        # 과목 표시를 빼고, 이 배치에 실제로 있는 과목의 장만 줄로 세운다.
+        want = {i.get("subject") for i in items if i.get("subject")}
+        subs = [x for x in curri["subjects"]
+                if not want or x["subject"] in want] or curri["subjects"]
+        lines = []
+        for x in subs:
+            if len(subs) > 1:
+                lines.append("과목 %s 의 장:" % x["subject"])
+            lines += ["  - %s" % c for c in x["chapters"]]
+        head = CH_HEAD_MANY if len(subs) > 1 else CH_HEAD_ONE
+        ch = head + "\n".join(lines) + "\n"
+
+    return "%s%s\n시험: %s\n\n문항:\n%s\n" % (PREAMBLE, ch, exam_title, body)
 
 
-def _validate(items, data):
+def norm_chapter(name: str, curri: dict = None, subject: str = "") -> str:
+    """장 이름을 목록에 맞춰 되돌린다.
+
+    모델이 "[이론시험] 재고자산" 처럼 과목을 앞에 붙여 오면 같은 장이 둘로
+    갈라진다. 접두사를 벗기고, 목록에 있는 이름이면 그걸로 맞춘다.
+    """
+    c = (name or "").strip()
+    if not c:
+        return ""
+    c = re.sub(r"^\s*[\[(<]\s*[^\]\)>]{1,20}\s*[\])>]\s*", "", c).strip()
+    c = re.sub(r"^\s*\d+\s*[.)]\s*", "", c).strip()
+    subs = (curri or {}).get("subjects") or []
+    # 과목 이름을 장으로 베껴 오는 일이 있었다("영문해석", "영작문").
+    # 과목은 장이 아니다. 잘못 온 것이니 비워서 내보낸다.
+    if any(c == x.get("subject") for x in subs):
+        return ""
+    # 같은 이름의 장이 여러 과목에 있다(무역영어의 "해상보험"). 제 과목 것을 먼저 본다.
+    mine = [x for x in subs if subject and x["subject"] == subject]
+    allowed = [ch for x in (mine or subs) for ch in (x.get("chapters") or [])]
+    if not allowed:
+        return c
+    if c in allowed:
+        return c
+    flat = c.replace(" ", "")
+    for a in allowed:
+        if a.replace(" ", "") == flat:
+            return a
+    for a in allowed:                       # 부분 일치까지만. 더 늘리면 엉뚱한 데 붙는다
+        if flat and (flat in a.replace(" ", "") or a.replace(" ", "") in flat):
+            return a
+    return c
+
+
+def _validate(items, data, curri=None):
     if not isinstance(data, dict) or "results" not in data:
         return None, "results 키가 없음"
     by_id = {i["id"]: i for i in items}
@@ -144,6 +309,12 @@ def _validate(items, data):
             "confidence": r.get("confidence", "medium"),
             "wrong_reasons": r.get("wrong_reasons") or [],
             "diagram_svg": svg,
+            "chapter": norm_chapter(r.get("chapter"), curri, it.get("subject")),
+            "concepts": [c.strip() for c in (r.get("concepts") or []) if c.strip()][:6],
+            "point": (r.get("point") or "").strip(),
+            "level": r.get("level") or "",
+            "difficulty": r.get("difficulty") or "",
+            "misconception": (r.get("misconception") or "").strip() or None,
             "item_hash": it["item_hash"],
             "source": "codex",
         }
@@ -205,6 +376,21 @@ def answer_all(doc, out_path, *, batch=BATCH, limit=0, force=False,
         return store
 
     store.doc["engine"] = {"cli": "codex", "auth": "chatgpt", "model": model or "default"}
+
+    # 장 목록을 먼저 닫아 둔다. 배치마다 이름이 흔들리면 방사형 축이 안 만들어진다.
+    curri = store.doc.get("curriculum")
+    if not (curri and curri.get("subjects")):
+        log("  장 목록을 정하는 중…")
+        subs = []
+        for i in items:
+            if i.get("subject") and i["subject"] not in subs:
+                subs.append(i["subject"])
+        curri = curriculum(doc["exam_title"], subs, model)
+        store.doc["curriculum"] = curri
+        store.save()
+        for s2 in curri.get("subjects") or []:
+            log("    [%s] %s" % (s2["subject"], " · ".join(s2["chapters"])))
+    doc["_curriculum"] = curri
     groups = [todo[i:i + batch] for i in range(0, len(todo), batch)]
     log("  %d문항 · %d배치 (배치당 %d문항)" % (len(todo), len(groups), batch))
 
@@ -226,8 +412,9 @@ def _run_group(doc, group, store, model, log, tag):
         if len(group) > 1 else "#%s" % group[0]["number"]
     t0 = time.time()
     try:
-        data = C.run(build_prompt(doc["exam_title"], group), SCHEMA, model=model)
-        res, err = _validate(group, data)
+        data = C.run(build_prompt(doc["exam_title"], group, doc.get("_curriculum")),
+                     SCHEMA, model=model)
+        res, err = _validate(group, data, doc.get("_curriculum"))
         if res:
             store.commit(res)
             log("%s %-14s ok  (%.1f초)" % (tag, label, time.time() - t0))

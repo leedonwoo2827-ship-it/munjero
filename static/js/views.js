@@ -377,6 +377,7 @@ var Views = (function () {
       + (built ? "다시 만들기" : "채점기 만들기") + "</button>"
       + (built ? '<button class="btn" id="btnOpenGrader">열어 보기</button>'
           + '<button class="btn" id="btnDownload">파일로 받기</button>' : "")
+      + '<button class="btn" id="btnToReport">출제의 맥 &rarr;</button>'
       + '<span class="spacer"></span>'
       + '<button class="btn" id="btnFolder">폴더 열기</button></div></div>'
       + '<div class="card"><h2>꼭 확인해 주세요</h2><div class="sub" style="margin:0">'
@@ -386,6 +387,48 @@ var Views = (function () {
       + "</div></div></div>";
   }
 
-  return {start: start, toc: toc, map: map, item: item, review: review, answer: answer, ansItem: ansItem,
+  /* ── 개념 지도 ──────────────────────────────────────────────
+     채점기는 학습자가 보고, 이건 저자가 본다. 파일을 나누는 이유다. */
+  function report(s, r) {
+    r = r || s.report || null;          // 새로고침 뒤에도 만든 걸 안다
+    if (!s.answers) {
+      return '<div class="view-in"><div class="page-h"><h1>출제의 맥<span style="font-size:.7em;color:var(--text-3);font-weight:400;margin-left:4px">脈</span></h1></div>'
+        + '<div class="note note--warn"><b>먼저 정답과 해설을 만들어 주세요.</b> '
+        + "개념이 붙어야 묶어 올릴 수 있습니다.</div>"
+        + '<button class="btn btn--primary" onclick="Shell.goto(\'answer\')">'
+        + "정답 · 해설로 가기</button></div>";
+    }
+    return '<div class="view-in">'
+      + '<div class="page-h"><h1>출제의 맥<span style="font-size:.7em;color:var(--text-3);font-weight:400;margin-left:4px">脈</span></h1>'
+      + '<span class="why">출제 경향 — 시험범위에서 어디가 많이 나왔는지 봅니다</span>'
+      + "</div>"
+      + '<div class="page-sum">' + (r
+          ? (!r.concepts ? "만들어져 있습니다. 숫자를 보려면 다시 만들어 주세요."
+            : "문항 <b>" + r.items + "</b>개 &middot; 개념 <b>" + r.concepts + "</b>개")
+            + (r.axes ? " &rarr; " + r.branches + "갈래 <b>" + r.axes + "</b>축" : "")
+            + (r.thin ? ' &middot; <b style="color:var(--warn)">한 문항뿐인 개념 '
+                + r.thin + "</b>" : "")
+            + (r.overlaps ? " &middot; 겹침 의심 " + r.overlaps + "쌍" : "")
+            + (r.untagged ? " &middot; 태그 없음 " + r.untagged : "")
+          : "아직 만들지 않았습니다.") + "</div>"
+      + '<div class="card"><div class="bar" style="margin:0">'
+      + '<button class="btn btn--primary" id="btnReport">'
+      + (r ? "다시 만들기" : "출제의 맥 만들기") + "</button>"
+      + (r ? '<button class="btn" id="btnReportOpen">열어 보기</button>'
+           + '<button class="btn" id="btnReportCsv">CSV 받기</button>' : "")
+      + '<span class="spacer"></span>'
+      + '<button class="btn" id="btnReportFolder">폴더 열기</button></div></div>'
+      + '<div class="card"><h2>무엇에 쓰나</h2><div class="sub" style="margin:0">'
+      + "방사형의 축은 문항에 붙은 개념을 한 단계 묶어 올린 것입니다. "
+      + "축에 마우스를 올리면 그 아래 개념이 보입니다.<br>"
+      + "한 문항뿐인 개념은 다음 판에서 늘릴지 뺄지 정할 자리입니다.<br>"
+      + "겹침 의심은 같은 개념을 같은 논점으로 두 번 물은 짝입니다. 하나로 줄일 수 있습니다.<br>"
+      + "사고 수준이 한쪽으로 몰려 있으면 균형을 볼 자리입니다.<br><br>"
+      + "<b>concepts.csv</b> 는 엑셀에서 바로 열립니다. 직접 정렬하고 다루세요."
+      + "</div></div></div>";
+  }
+
+  return {start: start, toc: toc, map: map, item: item, review: review,
+          report: report, answer: answer, ansItem: ansItem,
           exportView: exportView};
 })();

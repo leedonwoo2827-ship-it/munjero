@@ -115,7 +115,7 @@ var Shell = (function () {
 
   /* ── 레일 ── */
   function navActive(v) {
-    $$("#nav a").forEach(function (a) {
+    $$(".nav a").forEach(function (a) {
       a.classList.toggle("active", a.getAttribute("data-go") === v);
       var locked = !State.exam && a.getAttribute("data-go") !== "start";
       a.classList.toggle("locked", locked);
@@ -205,6 +205,7 @@ var Shell = (function () {
     if (v === "map") return showMap();
     if (v === "answer") return showAnswer();
     if (v === "export") return showExport();
+    if (v === "report") return showReport();
   }
 
   function wireDrop() {
@@ -245,7 +246,7 @@ var Shell = (function () {
   }
 
   async function open(id) {
-    State.exam = id; State.dirty = {};
+    State.exam = id; State.dirty = {}; reportInfo = null;
     var d = await api("/exam/" + encodeURIComponent(id) + "/items");
     State.items = d.items;
     State.summary = await api("/exam/" + encodeURIComponent(id));
@@ -465,18 +466,33 @@ var Shell = (function () {
      사람은 프로그램이 죽은 줄 안다. */
   function startClock(job) {
     stopClock();
-    clock = setInterval(function () {
-      var el = $("#ansSum");
-      if (!el) return stopClock();
-      var el2 = Math.max(0, Date.now() - startedAt);
-      var per = job.done > 0 ? el2 / job.done : 0;
-      var left = per && job.total > job.done ? per * (job.total - job.done) : 0;
-      el.innerHTML = "쓰는 중 &middot; <b>" + job.done + "</b> / " + job.total + " 문항"
-        + " &middot; 경과 <b>" + mmss(el2) + "</b>"
-        + (left ? " &middot; 남은 예상 " + mmss(left) : "");
-    }, 1000);
+    var c = $("#clock");
+    if (c) c.classList.add("on");
+    tick(job);
+    clock = setInterval(function () { tick(job); }, 1000);
   }
-  function stopClock() { if (clock) clearInterval(clock); clock = null; }
+
+  function tick(job) {
+    var t = $("#clockT");
+    if (!t) return stopClock();
+    var el = Math.max(0, Date.now() - startedAt);
+    t.textContent = mmss(el);
+    var n = $("#clockN");
+    if (n) n.innerHTML = "<b>" + job.done + "</b> / " + job.total + " 문항";
+    var per = job.done > 0 ? el / job.done : 0;
+    var left = per && job.total > job.done ? per * (job.total - job.done) : 0;
+    var l = $("#clockL");
+    if (l) l.textContent = left ? "남은 예상 " + mmss(left) : "시작하는 중…";
+    var s = $("#ansSum");
+    if (s) s.textContent = "쓰는 중";
+  }
+
+  function stopClock() {
+    if (clock) clearInterval(clock);
+    clock = null;
+    var c = $("#clock");
+    if (c) c.classList.remove("on");
+  }
 
   async function poll() {
     if (timer) clearTimeout(timer);
@@ -570,6 +586,43 @@ var Shell = (function () {
       window.location = "/api/exam/" + encodeURIComponent(State.exam) + "/grader?download=true";
     };
     var f = $("#btnFolder");
+    if (f) f.onclick = function () {
+      api("/exam/" + encodeURIComponent(State.exam) + "/open-folder", {method: "POST"});
+    };
+    var tr = $("#btnToReport");
+    if (tr) tr.onclick = function () { goto("report"); };
+  }
+
+  /* ── 출제의 맥 ── */
+  var reportInfo = null;
+
+  async function showReport() {
+    var s = State.summary || {};
+    paint(Views.report(s, reportInfo));
+    var b = $("#btnReport");
+    if (b) b.onclick = async function () {
+      b.disabled = true;
+      b.textContent = "만드는 중…";
+      try {
+        reportInfo = await api("/exam/" + encodeURIComponent(State.exam) + "/report",
+                               {method: "POST"});
+        showReport();
+        toast("개념 " + reportInfo.concepts + "개를 모았습니다");
+      } catch (e) {
+        b.disabled = false;
+        toast(e.message);
+      }
+    };
+    var o = $("#btnReportOpen");
+    if (o) o.onclick = function () {
+      window.open("/api/exam/" + encodeURIComponent(State.exam) + "/report", "_blank");
+    };
+    var c = $("#btnReportCsv");
+    if (c) c.onclick = function () {
+      window.location = "/api/exam/" + encodeURIComponent(State.exam)
+        + "/report?kind=csv";
+    };
+    var f = $("#btnReportFolder");
     if (f) f.onclick = function () {
       api("/exam/" + encodeURIComponent(State.exam) + "/open-folder", {method: "POST"});
     };
@@ -764,7 +817,7 @@ var Shell = (function () {
   $("#lnkAll").onclick = workspace;
   $("#btnWorkspace").onclick = workspace;
   $("#outRoot").onclick = changeOut;
-  $$("#nav a").forEach(function (a) {
+  $$(".nav a").forEach(function (a) {
     a.onclick = function () { goto(a.getAttribute("data-go")); };
   });
 

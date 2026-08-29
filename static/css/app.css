@@ -101,7 +101,7 @@ body[data-rail="collapsed"] .rail-wrap { display: none; }
   display: grid; place-items: center; font-size: 11.5px; font-weight: 800;
   cursor: pointer; white-space: nowrap; flex: none;
 }
-.brand-name { color: var(--rail-ink); font-weight: 700; font-size: 15px; }
+.brand-name { color: #fff; font-weight: 700; font-size: 14px; white-space: nowrap; }
 .rail-toggle { margin-left: auto; width: 26px; height: 26px; border: 0;
   border-radius: var(--r-sm); background: transparent; color: var(--rail-ink-3);
   cursor: pointer; font-size: 14px; }
@@ -655,3 +655,19 @@ table.grid td { padding: 0; }
 .fmt tr.best { background: var(--ok-wash); }
 .fmt tr.best .f, .fmt tr.best .w { color: var(--ok-ink); }
 .fmt tr.worst .w { color: var(--warn-ink); }
+
+
+/* ══ 만드는 중 시계 ═════════════════════════════════════════════
+   오래 걸리는 일이라 "살아 있다" 는 신호가 필요하다. 퍼센트만 있으면
+   멈춘 줄 안다. 경과 시간을 제목만큼 키워서 눈에 먼저 들어오게 한다. */
+.clock { display: none; align-items: baseline; gap: 16px; flex-wrap: wrap;
+  margin: 4px 0 16px; }
+.clock.on { display: flex; }
+.clock .t { font-size: 30px; font-weight: 800; color: var(--brand-deep);
+  letter-spacing: -.6px; line-height: 1.1;
+  font-variant-numeric: tabular-nums; }
+.clock .n { font-size: 15px; font-weight: 700; color: var(--ink); }
+.clock .n b { color: var(--brand); font-size: 18px; }
+.clock .left { font-size: 13.5px; color: var(--text-2); }
+.clock .dot { width: 8px; height: 8px; border-radius: 50%;
+  background: var(--sky-400); animation: pulse 1.2s infinite; align-self: center; }

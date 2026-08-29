@@ -182,7 +182,20 @@ def activity(exam_id: str = ""):
         {"key": "04_grader", "name": "채점기", "ok": os.path.isfile(p["grader"]),
          "note": ("%d KB" % (size(p["grader"]) // 1024))
                  if os.path.isfile(p["grader"]) else ""},
+        {"key": "05_report", "name": "출제의 맥",
+         "ok": os.path.isfile(os.path.join(p["report"], "리포트.html")),
+         "note": ("개념 %d" % st.get("05_report", {}).get("concepts", 0))
+                 if st.get("05_report") else ""},
     ]
+    # 새로고침해도 리포트가 있는 걸 알아야 한다. 화면 변수만 보면
+    # 만들어 놓고도 "아직 만들지 않았습니다" 가 뜬다.
+    rp = st.get("05_report") or {}
+    if os.path.isfile(os.path.join(p["report"], "리포트.html")):
+        # 명령줄로 만든 것은 표시가 없다. 그래도 파일이 있으면 있다고 해야 한다.
+        out["report"] = dict(rp) if rp.get("concepts") else {"file": True}
+    else:
+        out["report"] = None
+
     hist = os.path.join(p["base"], "04_grader", "이전")
     out["versions"] = sorted(os.listdir(hist), reverse=True)[:8]         if os.path.isdir(hist) else []
     job = JOBS.get(exam_id)
@@ -729,6 +742,34 @@ def build(exam_id: str):
     CFG.mark(exam_id, "04_grader", {"bytes": r["bytes"]})
     return {"bytes": r["bytes"], "missing": r["missing"], "stale": r["stale"],
             "images": r["images"], **_summary(exam_id)}
+
+
+@router.post("/exam/{exam_id}/report")
+def make_report(exam_id: str):
+    """리포트 — 출제 경향. 저자에게 넘기는 자료라 채점기와 파일을 나눈다."""
+    from munjero.build import report
+
+    p = _exam_or_404(exam_id)
+    if not os.path.isfile(p["answers"]):
+        raise HTTPException(400, "정답·해설을 먼저 만들어 주세요.")
+    r = report.build(_load(p["items"]), _load(p["answers"]), p["report"])
+    CFG.mark(exam_id, "05_report",
+             {"concepts": r["concepts"], "thin": r["thin"], "items": r["items"],
+              "axes": r.get("axes", 0), "branches": r.get("branches", 0),
+              "overlaps": r["overlaps"], "untagged": r["untagged"]})
+    return r
+
+
+@router.get("/exam/{exam_id}/report")
+def report_file(exam_id: str, kind: str = "html"):
+    p = _exam_or_404(exam_id)
+    name = "concepts.csv" if kind == "csv" else "리포트.html"
+    f = os.path.join(p["report"], name)
+    if not os.path.isfile(f):
+        raise HTTPException(404, "아직 출제의 맥을 만들지 않았습니다.")
+    if kind == "csv":
+        return FileResponse(f, media_type="text/csv", filename=name)
+    return FileResponse(f, media_type="text/html")
 
 
 @router.get("/exam/{exam_id}/grader")

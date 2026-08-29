@@ -150,9 +150,72 @@ function badges(it) {
   return b.join("");
 }
 
+/* 개념이 많으면 칩으로는 다 못 보여 준다. 전체를 한 판에 펼친다. */
+function showConcepts() {
+  var cnt = {}, where = {};
+  ITEMS.forEach(function (it) {
+    (it.concepts || []).forEach(function (c) {
+      cnt[c] = (cnt[c] || 0) + 1;
+      (where[c] = where[c] || []).push(it.number);
+    });
+  });
+  var keys = Object.keys(cnt).sort(function (a, b) {
+    return cnt[b] - cnt[a] || a.localeCompare(b);
+  });
+  if (!keys.length) { alert("개념 태그가 없습니다."); return; }
+  var max = cnt[keys[0]];
+
+  var h = ['<div class="cmap-scrim" onclick="closeConcepts()"></div>'
+    + '<div class="cmap"><div class="cmap-h"><b>개념 ' + keys.length + "개</b>"
+    + '<span>문항 ' + ITEMS.length + "개 · 누르면 그 개념만 봅니다</span>"
+    + '<button onclick="closeConcepts()">&times;</button></div>'
+    + '<div class="cmap-b">'];
+  keys.forEach(function (c) {
+    var w = Math.max(4, Math.round(cnt[c] / max * 100));
+    /* 개념 이름에 따옴표가 들어갈 수 있다. 인라인 onclick 에 넣으면 거기서 깨진다.
+       data 속성으로 넘기고 위임으로 받는다. */
+    h.push('<div class="cmap-r" data-c="' + esc(c) + '">'
+      + '<span class="nm">' + esc(c) + "</span>"
+      + '<span class="ba"><i style="width:' + w + '%"></i></span>'
+      + '<span class="ct">' + cnt[c] + "</span>"
+      + '<span class="ns">' + esc(where[c].slice(0, 10).join(", "))
+      + (where[c].length > 10 ? " …" : "") + "</span></div>");
+  });
+  h.push("</div></div>");
+  var d = document.createElement("div");
+  d.id = "cmapLayer";
+  d.innerHTML = h.join("");
+  document.body.appendChild(d);
+  Array.prototype.forEach.call(d.querySelectorAll(".cmap-r"), function (r) {
+    r.onclick = function () { pickTagName(r.getAttribute("data-c")); };
+  });
+}
+function closeConcepts() {
+  var d = document.getElementById("cmapLayer");
+  if (d) d.remove();
+}
+function pickTagName(c) {
+  closeConcepts();
+  filter = "tag:" + c;
+  buildToolbar();
+  render();
+  window.scrollTo({top: 0, behavior: "smooth"});
+}
+
+function pickTag(e) {
+  e.stopPropagation();
+  filter = "tag:" + e.target.getAttribute("data-tag");
+  buildToolbar();
+  render();
+  window.scrollTo({top: 0, behavior: "smooth"});
+}
+
 function visible() {
   return ITEMS.filter(function (it) {
     if (filter === "all") return true;
+    if (filter.indexOf("tag:") === 0) {
+      return (it.concepts || []).indexOf(filter.slice(4)) >= 0;
+    }
     if (filter === "review") return it.needs_review;
     if (filter === "low") return it.confidence === "low";
     if (filter === "none") return it.answer_index == null && it.answer_type === "single";
@@ -167,6 +230,11 @@ function render() {
     h.push('<div class="q-card" data-id="' + esc(it.id) + '" data-number="' + esc(it.number) + '">');
     h.push('<div class="q-head"><span class="q-number">' + esc(it.number) + "번</span>");
     if (it.subject) h.push('<span class="q-pill">' + esc(it.subject) + "</span>");
+    (it.concepts || []).forEach(function (c) {
+      h.push('<span class="q-tag" data-tag="' + esc(c) + '" onclick="pickTag(event)">#'
+        + esc(c) + "</span>");
+    });
+    if (it.difficulty) h.push('<span class="q-diff">난이도 ' + esc(it.difficulty) + "</span>");
     h.push(badges(it));
     if (it.source && it.source.page) h.push('<span class="q-src">p.' + it.source.page + "</span>");
     h.push("</div>");
@@ -273,7 +341,22 @@ function applyResults() {
          화면에서 날것으로 넣는 유일한 값이므로, 거르는 곳을 한 군데로 모아 둔다. */
       var dia = it.diagram_svg
         ? '<div class="q-diagram">' + it.diagram_svg + "</div>" : "";
+      /* 핵심 논점은 사실상 답이다. 그래서 카드 겉이 아니라 해설 안에 둔다. */
+      var meta = "";
+      if (it.point || it.level || it.misconception) {
+        var dl = [];
+        if (it.point) dl.push("<dt>핵심</dt><dd>" + esc(it.point) + "</dd>");
+        if (it.level) {
+          dl.push("<dt>수준</dt><dd>" + esc(it.level)
+            + (it.difficulty ? " · 난이도 " + esc(it.difficulty) : "") + "</dd>");
+        }
+        meta = '<div class="q-meta"><dl>' + dl.join("") + "</dl>"
+          + (it.misconception
+              ? '<div class="miss"><b>흔한 오해</b><br>' + esc(it.misconception) + "</div>"
+              : "") + "</div>";
+      }
       ex.innerHTML = '<span class="q-explain__label">' + label + "</span>"
+        + meta
         + mdBlocks(it.explanation)
         + dia
         + (why.length ? '<div class="q-why"><ul>' + why.map(function (w) {
@@ -332,6 +415,23 @@ function buildToolbar() {
 
   var b = ['<button data-f="all">전체 ' + ITEMS.length + "</button>"];
   subs.forEach(function (s) { b.push('<button data-f="' + esc(s) + '">' + esc(s) + "</button>"); });
+
+  /* 개념 칩 — 많이 나온 순 여덟 개. 전부 늘어놓으면 줄이 넘쳐 못 쓴다. */
+  var cnt = {};
+  ITEMS.forEach(function (it) {
+    (it.concepts || []).forEach(function (c) { cnt[c] = (cnt[c] || 0) + 1; });
+  });
+  var top = Object.keys(cnt).sort(function (a, b2) { return cnt[b2] - cnt[a]; });
+  if (top.length) {
+    b.push('<span class="tool-sep"></span>');
+    top.slice(0, 8).forEach(function (c) {
+      b.push('<button data-f="tag:' + esc(c) + '">#' + esc(c) + " " + cnt[c] + "</button>");
+    });
+    if (top.length > 8) {
+      b.push('<button data-f="__more" title="' + esc(top.slice(8).join(", ")) + '">개념 '
+        + top.length + "개 전체</button>");
+    }
+  }
   b.push('<span class="spacer"></span>');
   if (nReview) b.push('<button data-f="review">확인 필요 ' + nReview + "</button>");
   if (nLow) b.push('<button data-f="low">확신 낮음 ' + nLow + "</button>");
@@ -339,7 +439,9 @@ function buildToolbar() {
   $("#exToolbar").innerHTML = b.join("");
   Array.prototype.forEach.call($("#exToolbar").querySelectorAll("button"), function (el) {
     el.onclick = function () {
-      filter = el.getAttribute("data-f");
+      var f = el.getAttribute("data-f");
+      if (f === "__more") { showConcepts(); return; }
+      filter = f;
       Array.prototype.forEach.call($("#exToolbar").querySelectorAll("button"), function (x) {
         x.classList.toggle("on", x === el);
       });

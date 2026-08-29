@@ -314,6 +314,27 @@ def cmd_map(args):
     return 0
 
 
+# ── report : 개념 지도 ────────────────────────────────────────────────────
+def cmd_report(args):
+    from .build import report
+    exam_id, root = _resolve(args.target, args.out_root)
+    p = CFG.paths(exam_id, root)
+    if not os.path.isfile(p["answers"]):
+        raise SystemExit("정답·해설이 없습니다. 먼저 answer 를 돌리세요.")
+    r = report.build(_load(p["items"]), _load(p["answers"]), p["report"])
+    _p("[05] 출제의 맥")
+    _p("  문항 %d · 개념 %d개" % (r["items"], r["concepts"]))
+    if r["thin"]:
+        _p("  한 문항뿐인 개념 %d개 — 다음 판에서 볼 자리입니다." % r["thin"])
+    if r["overlaps"]:
+        _p("  겹침 의심 %d쌍" % r["overlaps"])
+    if r["untagged"]:
+        _p("  개념이 안 붙은 문항 %d개" % r["untagged"])
+    _p("  -> %s" % r["html"])
+    _p("  -> %s" % r["csv"])
+    return 0
+
+
 # ── run : 전 단계 ─────────────────────────────────────────────────────────
 def cmd_run(args):
     from .parse import html_to_items as P
@@ -489,6 +510,10 @@ def main(argv=None):
     p.add_argument("--out", default="")
     p.add_argument("--no-cdn", action="store_true")
     p.set_defaults(fn=cmd_run)
+
+    p = sub.add_parser("report", help="[05] 출제의 맥 — 출제 경향")
+    p.add_argument("target")
+    p.set_defaults(fn=cmd_report)
 
     p = sub.add_parser("list", help="만든 시험 목록")
     p.set_defaults(fn=cmd_list)
