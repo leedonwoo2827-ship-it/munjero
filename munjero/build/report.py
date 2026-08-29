@@ -200,8 +200,9 @@ def radar(axes: list, title: str = "", size: int = 190, group: str = "") -> str:
     mx = max(a["value"] for a in axes) or 1
     # 축 이름 길이에 맞춰 여백을 잡는다. 고정값으로 두면 긴 이름이 그림 밖으로 잘린다
     # (실제로 "보험 부보와 보험청구 문서" 가 "와 보험청구" 로 보였다).
+    # 글자 13.5px 에 숫자가 뒤에 붙는다. 한글은 폭이 거의 글자 크기만큼이다.
     longest = max(len(_short(a["name"])) for a in axes)
-    pad = min(180, max(86, longest * 12 + 26))
+    pad = min(200, max(96, longest * 14 + 32))
     top = 26 if title else 6      # 제목 자리
     box = size + pad * 2
     cx = box / 2
@@ -427,13 +428,20 @@ table.raw th{color:var(--muted);font-size:11.5px;font-weight:800;
  text-transform:uppercase;letter-spacing:.05em}
 table.raw td.n{text-align:right;font-weight:700;color:var(--brand)}
 table.raw td.no{font:11.5px/1.6 ui-monospace,Consolas,monospace;color:var(--faint)}
-.wrap{max-width:1240px}
-/* 왼쪽 그림, 오른쪽 목록·문항. 오른쪽은 따라다녀야 아래 표에서 눌러도 보인다. */
-.trend{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:20px;
+.wrap{max-width:1400px}
+/* 오른쪽 줄은 페이지 전체의 것이다. 맨 위 카드 안에만 두면 아래 표에서
+   번호를 눌렀을 때 화면을 거슬러 올라가야 한다. */
+.page{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:18px;
  align-items:start}
-.side{position:sticky;top:14px;max-height:calc(100vh - 28px);overflow:auto;
- background:var(--paper);border:1px solid var(--line);border-radius:12px;
- padding:14px 16px;font-size:13.5px;word-break:keep-all}
+.main{min-width:0}
+.side{position:sticky;top:16px;max-height:calc(100vh - 32px);overflow:auto;
+ background:var(--bone);border:1px solid var(--line);border-radius:16px;
+ padding:16px 18px;font-size:13.5px;word-break:keep-all;
+ box-shadow:0 1px 2px rgba(16,24,40,.05)}
+@media (max-width:1180px){.page{grid-template-columns:1fr}
+ .side{position:static;max-height:none}}
+@media print{.side{display:none}.page{display:block}}
+/* 방사형 두 장이 제 크기(약 420px)로 나란히 서야 글자가 안 줄어든다. */
 .sguide{color:var(--muted);line-height:1.8}
 .sguide b{color:var(--ink)}
 .sh{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:10px;
@@ -477,12 +485,10 @@ a.qn:hover{background:var(--brand-50);border-bottom-color:var(--brand)}
 .radar a.axl{cursor:pointer}
 .radar a.axl:hover .lb,.radar a.axl:focus .lb{fill:var(--brand);font-weight:700}
 .radar a.axl .lb{transition:fill .12s}
-@media (max-width:1080px){.trend{grid-template-columns:1fr}
- .side{position:static;max-height:none}}
 .radars{display:flex;flex-wrap:wrap;gap:14px;justify-content:center}
-.rc{flex:0 0 auto}
-.radar{width:min(300px,100%);height:auto}
-.radar .ti{font:700 13px/1 "Pretendard Variable",Pretendard,sans-serif;fill:var(--ink)}
+.rc{flex:1 1 400px;max-width:520px;min-width:0}
+.radar{width:100%;height:auto;display:block}
+.radar .ti{font:700 15.5px/1 "Pretendard Variable",Pretendard,sans-serif;fill:var(--ink)}
 .radar .g{fill:none;stroke:var(--line);stroke-width:1}
 .radar .sp{stroke:var(--line);stroke-width:1}
 .radar .v{fill:rgba(20,184,166,.20);stroke:var(--sky);stroke-width:2;
@@ -490,11 +496,11 @@ a.qn:hover{background:var(--brand-50);border-bottom-color:var(--brand)}
 .radar .d{fill:var(--sky)}
 .radar .d.thin{fill:var(--warn)}
 .radar .d.zero{fill:var(--warn);stroke:#fff;stroke-width:1.5}
-.radar .lb{font:11.5px/1 "Pretendard Variable",Pretendard,sans-serif;fill:var(--muted)}
+.radar .lb{font:600 13.5px/1 "Pretendard Variable",Pretendard,sans-serif;fill:var(--text)}
 .radar .lb.thin{fill:var(--warn);font-weight:700}
 .radar .lb.zero{fill:var(--warn);font-weight:800}
 .radar .lb.zero .n{fill:var(--warn)}
-.radar .lb .n{font-weight:800;fill:var(--brand)}
+.radar .lb .n{font-weight:800;font-size:14.5px;fill:var(--brand)}
 .radar .lb.thin .n{fill:var(--warn)}
 .rcap{text-align:center;font-size:12px;color:var(--faint);margin-top:-4px}
 .zk{color:var(--warn);font-weight:800}
@@ -526,9 +532,11 @@ def render_html(meta: dict, data: dict, n_items: int, glink: str = "",
          "<style>%s</style></head><body>" % CSS,
          "<header><div class='wrap'><h1>출제의 맥<span class='hj'>脈</span></h1>"
          "<div class='m'>",
-         "%s &middot; 문항 <b>%d</b>개 &middot; 개념 <b>%d</b>개"
-         % (esc(meta.get("exam_title")), n_items, len(rows)),
-         "</div></div></header><div class='wrap'>"]
+         "%s &middot; 문항 <b>%d</b>개 &middot; 개념 <b>%d</b>개%s"
+         % (esc(meta.get("exam_title")), n_items, len(rows),
+            (" &middot; 한 문항뿐인 개념 <b>%d</b>개" % len(thin)) if thin else ""),
+         "</div></div></header><div class='wrap'><div class='page'>"
+         "<div class='main'>"]
 
     # 방사형 지식맵 — 축은 나온 개념을 한 단계 올린 것(2단계)이다.
     # "여기가 비었다" 가 보인다. 문항이 나온 곳만 그리면 공백이 사라진다.
@@ -573,8 +581,7 @@ def render_html(meta: dict, data: dict, n_items: int, glink: str = "",
                  "움푹 팬 곳이 적게 나온 자리, "
                  "<span class='zk'>주황</span>은 한 문항도 없는 자리입니다. "
                  "한 문항이 여러 축에 걸치므로 축의 합은 문항 수보다 큽니다.</div>"
-                 "<div class='trend'><div class='radars'>%s</div>"
-                 "<div class='side' id='qbd'></div></div>%s</div>"
+                 "<div class='radars'>%s</div>%s</div>"
                  % ("".join(cards),
                     ("<div class='zline'><b>한 문항도 안 나온 축 %d개</b> — %s</div>"
                      % (len(allzero), esc(", ".join(allzero)))) if allzero else ""))
@@ -640,15 +647,7 @@ def render_html(meta: dict, data: dict, n_items: int, glink: str = "",
                     qn(r["numbers"], glink)))
     o.append("</tbody></table></div>")
 
-    if thin:
-        o.append("<div class='card'><h2>다음 판에서 볼 것</h2><div class='note'>"
-                 "한 문항뿐인 개념이 <b>%d개</b>입니다 — %s<br><br>"
-                 "이 개념들이 시험에 꼭 필요하다면 문항을 늘리고, "
-                 "그렇지 않다면 빼서 다른 개념에 자리를 주는 편이 낫습니다."
-                 "</div></div>"
-                 % (len(thin), esc(", ".join(r["concept"] for r in thin[:20]))))
-
-    o.append("</div>")
+    o.append("</div><aside class='side' id='qbd'></aside></div></div>")
     o.append(_side(qs or [], axjs, glink))
     o.append("</body></html>")
     return "".join(o)
