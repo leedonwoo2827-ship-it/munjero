@@ -55,6 +55,12 @@ def collect(items: list, kmap: dict = None) -> dict:
     br = (kmap or {}).get("branches") or []
     axes = knowmap.axes_for(br, items) if br else []
     placed = {c for b in br for a in b["axes"] for c in a["concepts"]}
+    # 개념이 어느 갈래·축에 올라갔는지. 표와 CSV 에 필드로 실린다 —
+    # 축으로 정렬해 봐야 어디에 힘을 줄지가 보인다.
+    at = {c: (b["name"], a["name"])
+          for b in br for a in b["axes"] for c in a["concepts"]}
+    for r in rows:
+        r["branch"], r["axis"] = at.get(r["concept"], ("", ""))
     return {
         "rows": rows,
         "chapters": axes,
@@ -117,7 +123,69 @@ def _short(name: str, n: int = 13) -> str:
     return name if len(name) <= n else name[:n - 1] + "…"
 
 
-def radar(axes: list, title: str = "", size: int = 190) -> str:
+def grader_link(out_dir: str) -> str:
+    """옆 폴더의 채점기. 숫자를 눌러 그 문항으로 가려면 이게 있어야 한다.
+
+    아직 내보내지 않았으면 빈 문자열이고, 그러면 번호는 링크가 아니라 글자로 남는다.
+    """
+    d = os.path.join(os.path.dirname(os.path.abspath(out_dir)), "04_grader")
+    try:
+        fs = [f for f in os.listdir(d) if f.lower().endswith(".html")]
+    except OSError:
+        return ""
+    if not fs:
+        return ""
+    fs.sort(key=lambda f: os.path.getmtime(os.path.join(d, f)), reverse=True)
+    from urllib.parse import quote
+    return "../04_grader/" + quote(fs[0])
+
+
+def qn(numbers: list, link: str, limit: int = 0) -> str:
+    """문항 번호를 누르면 그 문항이 옆에 열린다.
+
+    목록만 봐서는 무슨 문제인지 모른다. 리포트를 떠나지 않고 바로 보여 주고,
+    더 볼 것이 있으면 채점기로 건너가게 한다.
+    """
+    ns = numbers[:limit] if limit else numbers
+    more = " …" if limit and len(numbers) > limit else ""
+    # 파일명이 URL 인코딩되어 %ED 같은 게 들어 있다. % 서식으로 다루면 터진다.
+    out = []
+    for n in ns:
+        href = esc(link + "?review=1#q" + n) if link else "#"
+        out.append("<a class='qn' data-q='" + esc(n) + "' href='" + href
+                   + "'>" + esc(n) + "</a>")
+    return ", ".join(out) + more
+
+
+def qdata(items: list) -> list:
+    """옆에 띄울 최소한. 표와 그림까지 담으면 리포트가 무거워진다 —
+    그건 채점기가 할 일이고, 여기서는 '어떤 문제였더라' 만 답하면 된다."""
+    out = []
+    for it in items:
+        p = (it.get("passage") or "").strip()
+        out.append({
+            "n": str(it.get("number")),
+            "s": it.get("subject") or "",
+            "q": (it.get("question") or "").strip(),
+            "p": (p[:700] + " …") if len(p) > 700 else p,
+            "c": [str(x) for x in (it.get("choices") or [])],
+            "a": it.get("answer_index"),
+            "x": (it.get("explanation") or "").strip(),
+            "pt": it.get("point") or "",
+            "k": it.get("concepts") or [],
+            "lv": it.get("level") or "",
+            "df": it.get("difficulty") or "",
+            "tb": len(it.get("tables") or []),
+            "im": len(it.get("images") or it.get("figures") or []),
+        })
+    return out
+
+
+def _slug(s: str) -> str:
+    return re.sub(r"[^0-9A-Za-z가-힣]+", "-", s).strip("-") or "x"
+
+
+def radar(axes: list, title: str = "", size: int = 190, group: str = "") -> str:
     """레이더 차트 — 빈 곳이 움푹 팬 자국으로 보인다.
 
     막대는 위에서 아래로 읽어야 공백을 알아채지만, 레이더는 모양 하나로
@@ -133,7 +201,7 @@ def radar(axes: list, title: str = "", size: int = 190) -> str:
     # 축 이름 길이에 맞춰 여백을 잡는다. 고정값으로 두면 긴 이름이 그림 밖으로 잘린다
     # (실제로 "보험 부보와 보험청구 문서" 가 "와 보험청구" 로 보였다).
     longest = max(len(_short(a["name"])) for a in axes)
-    pad = min(150, max(70, longest * 8))
+    pad = min(180, max(86, longest * 12 + 26))
     top = 26 if title else 6      # 제목 자리
     box = size + pad * 2
     cx = box / 2
@@ -176,13 +244,141 @@ def radar(axes: list, title: str = "", size: int = 190) -> str:
             tip = "<title>%s — %s%s</title>" % (
                 esc(a["name"]), esc(" · ".join(cs[:14])),
                 " 외 %d개" % (len(cs) - 14) if len(cs) > 14 else "")
-        o.append("<text class='%s' x='%.1f' y='%.1f' text-anchor='%s'>%s%s"
-                 "<tspan class='n' dx='4'>%d</tspan></text>"
-                 % (cls, x, y + 3, anchor, tip,
-                    esc(_short(a["name"])), a["value"]))
+        t = ("<text class='%s' x='%.1f' y='%.1f' text-anchor='%s'>%s%s"
+             "<tspan class='n' dx='4'>%d</tspan></text>"
+             % (cls, x, y + 3, anchor, tip,
+                esc(_short(a["name"])), a["value"]))
+        # 축을 누르면 아래 목록으로 간다. 거기서 번호를 누르면 그 문항으로 간다.
+        if group:
+            t = "<a class='axl' data-ax='%s' tabindex='0' role='button'>%s</a>" % (
+                esc("%s|%s" % (group, a["name"])), t)
+        o.append(t)
 
     o.append("</svg>")
     return "".join(o)
+
+
+SIDE_JS = """
+(function () {
+  var Q = window.MJ_Q || {}, AX = window.MJ_AX || [], GL = window.MJ_GRADER || '';
+  var box = document.getElementById('qbd');
+  if (!box) return;
+  var axById = {}, back = null;
+  AX.forEach(function (a) { axById[a.id] = a; });
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+      return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c];
+    });
+  }
+  function nums(ns) {
+    return ns.map(function (n) {
+      return "<a class='qn' data-q='" + esc(n) + "' href='"
+        + (GL ? esc(GL) + '?review=1#q' + esc(n) : '#') + "'>" + esc(n) + "</a>";
+    }).join(', ');
+  }
+  function guide() {
+    back = null;
+    box.innerHTML = "<div class='sguide'><b>축을 눌러 보세요.</b><br>"
+      + "그 축이 어느 문항인지 여기에 뜹니다. 번호를 누르면 그 문제가 뜹니다."
+      + "<br><br>아래 개념 목록과 표의 번호도 같습니다.</div>";
+  }
+  function axis(id) {
+    var a = axById[id];
+    if (!a) return;
+    back = id;
+    box.innerHTML = "<div class='sh'><span class='sg'>" + esc(a.g)
+      + "</span><b>" + esc(a.a) + "</b><span class='sc'>" + a.v + "문항</span></div>"
+      + (a.v ? "<div class='sq'>" + nums(a.ns) + "</div>"
+             : "<div class='sq none'>이 축은 이번 시험에 한 문항도 없습니다.</div>")
+      + "<div class='sk'>" + a.cs.map(function (c) {
+          return "<span>" + esc(c) + "</span>"; }).join('') + "</div>";
+    reveal();
+  }
+  function question(n) {
+    var d = Q[n];
+    if (!d) return;
+    var h = "<div class='sh'>";
+    if (back && axById[back]) {
+      h += "<a class='sb' data-ax='" + esc(back) + "'>&larr; "
+        + esc(axById[back].a) + "</a>";
+    }
+    h += "<b>" + esc(d.n) + "번</b>"
+      + (d.s ? "<span class='sg'>" + esc(d.s) + "</span>" : "")
+      + (d.lv ? "<span class='sg'>" + esc(d.lv) + "</span>" : "")
+      + (d.df ? "<span class='sg'>난이도 " + esc(d.df) + "</span>" : "")
+      + "</div>";
+    if (d.k && d.k.length) {
+      h += "<div class='sk'>" + d.k.map(function (c) {
+        return "<span>#" + esc(c) + "</span>"; }).join('') + "</div>";
+    }
+    if (d.pt) h += "<div class='spt'>" + esc(d.pt) + "</div>";
+    if (d.p) h += "<div class='sps'>" + esc(d.p) + "</div>";
+    h += "<div class='sqq'>" + esc(d.q) + "</div>";
+    if (d.tb || d.im) {
+      h += "<div class='snote'>이 문항에는 "
+        + (d.tb ? '표 ' + d.tb + '개 ' : '') + (d.im ? '그림 ' + d.im + '개 ' : '')
+        + "가 있습니다. 채점기에서 보세요.</div>";
+    }
+    (d.c || []).forEach(function (c, i) {
+      h += "<div class='sc" + (i === d.a ? ' ok' : '') + "'><i>" + (i + 1)
+        + "</i>" + esc(c) + "</div>";
+    });
+    if (d.x) h += "<div class='sx'><b>해설</b><br>" + esc(d.x) + "</div>";
+    if (GL) {
+      h += "<a class='sgo' target='_blank' href='" + esc(GL) + "?review=1#q"
+        + esc(d.n) + "'>채점기에서 보기 &rarr;</a>";
+    }
+    box.innerHTML = h;
+    reveal();
+  }
+  function reveal() {
+    box.scrollTop = 0;
+    var r = box.getBoundingClientRect();
+    // 아래쪽 표에서 눌렀으면 오른쪽 칸이 화면 밖이다. 안 보이면 데려온다.
+    if (r.bottom < 60 || r.top > window.innerHeight - 60) {
+      box.scrollIntoView({block: 'center', behavior: 'smooth'});
+    }
+  }
+  document.addEventListener('click', function (e) {
+    var t = e.target, a;
+    if ((a = t.closest('a.qn')) && Q[a.getAttribute('data-q')]) {
+      e.preventDefault(); question(a.getAttribute('data-q')); return;
+    }
+    if ((a = t.closest('a.axl'))) {
+      e.preventDefault(); axis(a.getAttribute('data-ax')); return;
+    }
+    if ((a = t.closest('a.sb'))) { axis(a.getAttribute('data-ax')); }
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') guide();
+    if (e.key === 'Enter' && e.target.classList
+        && e.target.classList.contains('axl')) {
+      axis(e.target.getAttribute('data-ax'));
+    }
+  });
+  guide();
+})();
+"""
+
+
+def _side(qs: list, axes: list, glink: str) -> str:
+    """오른쪽 칸을 채우는 데이터와 스크립트.
+
+    file:// 로 여는 문서라 fetch 가 막힌다. 데이터를 그대로 심는다.
+    "</" 를 escape 하지 않으면 </script> 로 읽혀 문서가 거기서 끊긴다.
+    """
+    import json
+
+    if not qs and not axes:
+        return ""
+    def blob(x):
+        return json.dumps(x, ensure_ascii=False).replace("</", "<\\/")
+
+    return ("<script>window.MJ_Q=%s;window.MJ_AX=%s;window.MJ_GRADER=%s;</script>"
+            "<script>%s</script>"
+            % (blob({q["n"]: q for q in qs}), blob(axes),
+               json.dumps(glink), SIDE_JS))
 
 
 CSS = """
@@ -231,6 +427,58 @@ table.raw th{color:var(--muted);font-size:11.5px;font-weight:800;
  text-transform:uppercase;letter-spacing:.05em}
 table.raw td.n{text-align:right;font-weight:700;color:var(--brand)}
 table.raw td.no{font:11.5px/1.6 ui-monospace,Consolas,monospace;color:var(--faint)}
+.wrap{max-width:1240px}
+/* 왼쪽 그림, 오른쪽 목록·문항. 오른쪽은 따라다녀야 아래 표에서 눌러도 보인다. */
+.trend{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:20px;
+ align-items:start}
+.side{position:sticky;top:14px;max-height:calc(100vh - 28px);overflow:auto;
+ background:var(--paper);border:1px solid var(--line);border-radius:12px;
+ padding:14px 16px;font-size:13.5px;word-break:keep-all}
+.sguide{color:var(--muted);line-height:1.8}
+.sguide b{color:var(--ink)}
+.sh{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:10px;
+ padding-bottom:9px;border-bottom:1px solid var(--line)}
+.sh b{font-size:15px;color:var(--ink)}
+.sg{font-size:11.5px;color:var(--muted);background:var(--bone);
+ border:1px solid var(--line);border-radius:99px;padding:2px 9px}
+.sc-n,.sh .sc{margin-left:auto;font-weight:800;color:var(--brand)}
+.sb{display:block;width:100%;font-size:12px;color:var(--brand);cursor:pointer;
+ margin-bottom:6px}
+.sb:hover{text-decoration:underline}
+.sq{line-height:2.1}
+.sq.none{color:var(--warn);font-size:12.5px;line-height:1.7}
+.sk{display:flex;flex-wrap:wrap;gap:5px;margin:10px 0}
+.sk span{font-size:11.5px;color:var(--brand);background:var(--brand-50);
+ border-radius:99px;padding:2px 9px}
+.spt{background:var(--bone);border-left:3px solid var(--brand);border-radius:6px;
+ padding:9px 11px;font-size:12.5px;color:var(--ink);margin-bottom:10px}
+.sps{background:var(--bone);border:1px solid var(--line);border-radius:8px;
+ padding:10px 12px;font-size:12.5px;color:var(--muted);margin-bottom:10px;
+ max-height:190px;overflow:auto;white-space:pre-wrap}
+.sqq{font-weight:700;color:var(--ink);margin-bottom:10px;line-height:1.7}
+.snote{font-size:12px;color:var(--warn-ink);background:var(--warn-bg);
+ border-radius:6px;padding:7px 10px;margin-bottom:9px}
+.side .sc{display:flex;gap:8px;padding:7px 10px;border-radius:7px;
+ border:1px solid var(--line);margin-bottom:5px;font-size:12.5px;
+ background:var(--bone);line-height:1.6}
+.side .sc i{font-style:normal;font-weight:800;color:var(--faint);flex:0 0 14px}
+.side .sc.ok{border-color:#86c25a;background:#f1f8e8}
+.side .sc.ok i{color:#2f6b13}
+.sx{margin-top:11px;padding:11px 13px;background:var(--brand-50);
+ border-radius:8px;font-size:12.5px;line-height:1.75;color:var(--text)}
+.sx b{color:var(--brand-deep)}
+.sgo{display:inline-block;margin-top:11px;font-size:12.5px;color:var(--brand);
+ font-weight:700}
+.sgo:hover{text-decoration:underline}
+/* 번호는 눌러서 문제를 보는 자리다. 링크처럼 보여야 누른다. */
+a.qn{color:var(--brand);text-decoration:none;border-bottom:1px dotted var(--line2);
+ cursor:pointer}
+a.qn:hover{background:var(--brand-50);border-bottom-color:var(--brand)}
+.radar a.axl{cursor:pointer}
+.radar a.axl:hover .lb,.radar a.axl:focus .lb{fill:var(--brand);font-weight:700}
+.radar a.axl .lb{transition:fill .12s}
+@media (max-width:1080px){.trend{grid-template-columns:1fr}
+ .side{position:static;max-height:none}}
 .radars{display:flex;flex-wrap:wrap;gap:14px;justify-content:center}
 .rc{flex:0 0 auto}
 .radar{width:min(300px,100%);height:auto}
@@ -264,7 +512,8 @@ table.raw td.no{font:11.5px/1.6 ui-monospace,Consolas,monospace;color:var(--fain
 """
 
 
-def render_html(meta: dict, data: dict, n_items: int) -> str:
+def render_html(meta: dict, data: dict, n_items: int, glink: str = "",
+                qs: list = None) -> str:
     rows = data["rows"]
     mx = rows[0]["count"] if rows else 1
     thin = [r for r in rows if r["count"] == 1]
@@ -295,25 +544,37 @@ def render_html(meta: dict, data: dict, n_items: int) -> str:
     elif data.get("no_chapter"):
         o.append("<div class='note-warn'>어느 축에도 안 붙은 문항 <b>%d</b>개는 "
                  "아래 그림에서 빠져 있습니다.</div>" % data["no_chapter"])
+    axjs = []
     if chaps:
         cards = []
-        for c in chaps:
+        for gi, c in enumerate(chaps):
+            g = "g%d" % gi
             zero = [a["name"] for a in c["axes"] if a["value"] == 0]
+            for a in c["axes"]:
+                axjs.append({"id": "%s|%s" % (g, a["name"]),
+                             "g": c["subject"], "a": a["name"],
+                             "v": a["value"], "ns": a["numbers"],
+                             "cs": a.get("concepts") or []})
             cards.append(
-                "<div class='rc'>%s<div class='rcap'>%d문항%s</div></div>"
-                % (radar(c["axes"],
-                         c["subject"]),
-                   c["total"],
-                   " · 안 나온 축 %d" % len(zero) if zero else ""))
+                "<div class='rc'>%s%s</div>"
+                % (radar(c["axes"], "%s · %d문항" % (c["subject"], c["total"]),
+                         group=g),
+                   ("<div class='rcap'>안 나온 축 %d</div>" % len(zero))
+                   if zero else ""))
         allzero = [a["name"] for c in chaps if not c.get("extra")
                    for a in c["axes"] if a["value"] == 0]
+        # 왼쪽에 그림, 오른쪽에 목록과 문항. 채점기로 건너뛰면 보던 자리를
+        # 잃는다. 축을 훑다가 "이게 무슨 문제였더라" 를 그 자리에서 확인해야 한다.
         o.append("<div class='card'><h2>출제 경향</h2>"
-                 "<div class='s'>어디가 많이 나왔는지 봅니다. 축은 이 시험에서 실제로 나온 "
-                 "<b>개념을 한 단계 묶어 올린 것</b>이고, 축에 마우스를 올리면 그 아래 개념이 보입니다. "
+                 "<div class='s'>축은 이 시험에서 실제로 나온 "
+                 "<b>개념을 한 단계 묶어 올린 것</b>입니다. "
+                 "<b>축을 누르면</b> 오른쪽에 그 축의 문항이 뜨고, "
+                 "<b>번호를 누르면</b> 그 문제가 뜹니다. "
                  "움푹 팬 곳이 적게 나온 자리, "
                  "<span class='zk'>주황</span>은 한 문항도 없는 자리입니다. "
                  "한 문항이 여러 축에 걸치므로 축의 합은 문항 수보다 큽니다.</div>"
-                 "<div class='radars'>%s</div>%s</div>"
+                 "<div class='trend'><div class='radars'>%s</div>"
+                 "<div class='side' id='qbd'></div></div>%s</div>"
                  % ("".join(cards),
                     ("<div class='zline'><b>한 문항도 안 나온 축 %d개</b> — %s</div>"
                      % (len(allzero), esc(", ".join(allzero)))) if allzero else ""))
@@ -323,7 +584,7 @@ def render_html(meta: dict, data: dict, n_items: int) -> str:
              "다음 판에서 늘릴지, 아예 뺄지 정할 자리입니다.</div>")
     for r in rows:
         w = max(4, round(r["count"] / mx * 100))
-        nums = ", ".join(r["numbers"][:14]) + (" …" if len(r["numbers"]) > 14 else "")
+        nums = qn(r["numbers"], glink, limit=14)
         o.append("<div class='row%s'><span class='nm'>%s</span>"
                  "<span class='ba'><i style='width:%d%%'></i></span>"
                  "<span class='ct'>%d</span>"
@@ -331,7 +592,7 @@ def render_html(meta: dict, data: dict, n_items: int) -> str:
                  % (" thin" if r["count"] == 1 else "", esc(r["concept"]), w,
                     r["count"],
                     "<span class='th'>얇음</span>" if r["count"] == 1 else "",
-                    esc(nums)))
+                    nums))
     o.append("</div>")
 
     o.append("<div class='card'><h2>사고 수준과 난이도</h2>"
@@ -365,14 +626,18 @@ def render_html(meta: dict, data: dict, n_items: int) -> str:
     o.append("<div class='card'><h2>표로 보기</h2>"
              "<div class='s'>같은 내용을 concepts.csv 로도 냈습니다. "
              "엑셀에서 바로 열립니다.</div>"
-             "<table class='raw'><thead><tr><th>개념</th><th>문항수</th>"
+             "<table class='raw'><thead><tr><th>갈래</th><th>축</th><th>개념</th>"
+             "<th>문항수</th>"
              "<th>주 난이도</th><th>사고 수준</th><th>문항 번호</th></tr></thead><tbody>")
     for r in rows:
         lv = " · ".join("%s %d" % (k, v) for k, v in r["levels"].most_common())
-        o.append("<tr><td>%s</td><td class='n'>%d</td><td>%s</td><td>%s</td>"
+        o.append("<tr><td class='g'>%s</td><td class='ax'>%s</td><td>%s</td>"
+                 "<td class='n'>%d</td><td>%s</td><td>%s</td>"
                  "<td class='no'>%s</td></tr>"
-                 % (esc(r["concept"]), r["count"], esc(r["main_diff"]), esc(lv),
-                    esc(", ".join(r["numbers"]))))
+                 % (esc(r.get("branch")), esc(r.get("axis")),
+                    esc(r["concept"]), r["count"],
+                    esc(r["main_diff"]), esc(lv),
+                    qn(r["numbers"], glink)))
     o.append("</tbody></table></div>")
 
     if thin:
@@ -383,7 +648,9 @@ def render_html(meta: dict, data: dict, n_items: int) -> str:
                  "</div></div>"
                  % (len(thin), esc(", ".join(r["concept"] for r in thin[:20]))))
 
-    o.append("</div></body></html>")
+    o.append("</div>")
+    o.append(_side(qs or [], axjs, glink))
+    o.append("</body></html>")
     return "".join(o)
 
 
@@ -391,10 +658,12 @@ def write_csv(path: str, rows: list) -> None:
     """엑셀에서 바로 열리도록 BOM 을 넣는다. 없으면 한글이 깨진다."""
     with io.open(path, "w", encoding="utf-8-sig", newline="") as f:
         w = csv.writer(f)
-        w.writerow(["개념", "문항수", "주 난이도", "사고 수준", "문항 번호"])
+        w.writerow(["갈래", "축", "개념", "문항수", "주 난이도", "사고 수준",
+                    "문항 번호"])
         for r in rows:
             lv = " · ".join("%s %d" % (k, v) for k, v in r["levels"].most_common())
-            w.writerow([r["concept"], r["count"], r["main_diff"], lv,
+            w.writerow([r.get("branch", ""), r.get("axis", ""),
+                        r["concept"], r["count"], r["main_diff"], lv,
                         ", ".join(r["numbers"])])
 
 
@@ -413,8 +682,9 @@ def build(items_doc: dict, answers_doc: dict, out_dir: str) -> dict:
     csv_path = os.path.join(out_dir, "concepts.csv")
 
     meta = {"exam_title": items_doc.get("exam_title") or items_doc.get("exam_id")}
+    glink = grader_link(out_dir)       # 채점기가 있으면 번호에서 건너갈 수 있다
     with io.open(html_path, "w", encoding="utf-8") as f:
-        f.write(render_html(meta, data, len(items)))
+        f.write(render_html(meta, data, len(items), glink, qdata(items)))
     write_csv(csv_path, data["rows"])
 
     return {"html": html_path, "csv": csv_path,

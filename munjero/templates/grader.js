@@ -478,7 +478,20 @@ document.addEventListener("keydown", function (e) {
   cards[cursor].scrollIntoView({block: "center", behavior: "smooth"});
 });
 
+/* 출제의 맥에서 "12번" 을 누르면 #q12 로 들어온다. 그 문항으로 데려간다. */
+function jumpToHash() {
+  var m = /^#q(\d+)$/.exec(location.hash || "");
+  if (!m) return;
+  var card = document.querySelector('.q-card[data-number="' + m[1] + '"]');
+  if (!card) return;
+  card.scrollIntoView({block: "center"});
+  card.classList.add("q-jump");
+  setTimeout(function () { card.classList.remove("q-jump"); }, 2200);
+}
+
 answers = loadAns();
 buildToolbar();
 if (/[?&]review=1/.test(location.search)) revealed = graded = true;
 render();
+jumpToHash();
+window.addEventListener("hashchange", jumpToHash);

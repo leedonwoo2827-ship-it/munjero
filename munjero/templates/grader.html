@@ -157,6 +157,9 @@ body{margin:0;padding:0 0 80px;background:var(--soft);color:var(--body);
 .q-choice--wrong .q-choice__marker{color:var(--wrong-text)}
 .q-choice--wrong .q-choice__chip{background:var(--wrong);color:#fff}
 .q-card.is-graded .q-choice{cursor:default}
+/* 출제의 맥에서 건너온 문항. 어디로 왔는지 모르면 헤맨다. */
+.q-card.q-jump{animation:qjump 2.2s ease-out}
+@keyframes qjump{0%,55%{box-shadow:0 0 0 3px var(--brand-500);background:var(--brand-50)}100%{box-shadow:0 0 0 0 transparent}}
 
 /* ── 해설 ───────────────────────────────────────────────────────── */
 .q-explain{margin-top:14px;padding:14px 17px;background:var(--soft);
