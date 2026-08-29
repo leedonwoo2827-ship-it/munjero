@@ -225,10 +225,10 @@ def _names(xs, n=3, sep=" · "):
         " 외 %d개" % (len(xs) - n) if len(xs) > n else "")
 
 
-def trend_lede(chaps: list, data: dict) -> str:
+def trend_lede(chaps: list, data: dict, n_items: int) -> str:
     """출제 경향을 문장으로. 읽는 사람이 알고 싶은 건 사용법이 아니라 결과다.
 
-    갈래를 두꺼운 순으로 훑으며 "이번 시험은 이렇게 나왔다" 를 적는다.
+    강의 대본처럼 "이번 시험은 무엇이 몇 문제 출제되었다" 를 적는다.
     그림은 모양만 보여 주고, 이름과 숫자는 글이 말해야 한다.
     """
     axes = [a for c in chaps for a in c["axes"]]
@@ -236,41 +236,47 @@ def trend_lede(chaps: list, data: dict) -> str:
         return ""
     br = sorted(chaps, key=lambda c: -c["total"])
 
-    def tops(c, k=2):
-        xs = [a for a in sorted(c["axes"], key=lambda a: -a["value"])[:k]
-              if a["value"]]
-        txt = " · ".join("%s %d" % (a["name"], a["value"]) for a in xs)
-        html = " · ".join("<b>%s %d</b>" % (esc(a["name"]), a["value"])
-                          for a in xs)
-        return html, txt
+    def top(c, k=1):
+        return [a for a in sorted(c["axes"], key=lambda a: -a["value"])[:k]
+                if a["value"]]
+
+    def at(a):
+        return "<b>%s</b>에서 %d문제" % (esc(a["name"]), a["value"])
 
     s = []
     head = br[0]
-    h, t = tops(head)
-    s.append("이번 시험은 <b>%s</b>%s %d문항으로 가장 두껍고, 그중 %s%s 중심입니다."
+    s.append("이번 시험은 <b>%s</b>%s %d문항으로 가장 많이 출제되었습니다."
              % (esc(head["subject"]), _j(head["subject"], "이가"),
-                head["total"], h, _j(t, "이가")))
-    rest = ["<b>%s</b> %d문항은 %s"
-            % (esc(c["subject"]), c["total"], tops(c)[0]) for c in br[1:]]
+                head["total"]))
+    ht = top(head, 2)
+    if ht:
+        s.append("그중 %s로 가장 많이 출제되었습니다."
+                 % " · ".join(at(a) for a in ht))
+
+    rest = []
+    for c in br[1:]:
+        t = top(c)
+        if t:
+            rest.append("<b>%s</b> %d문항(%s %d문제)"
+                        % (esc(c["subject"]), c["total"],
+                           esc(t[0]["name"]), t[0]["value"]))
     if rest:
-        body = (", ".join(rest[:-1]) + (", " if len(rest) > 1 else "")
-                + rest[-1])
-        s.append("이어서 %s%s 나왔습니다." % (body, _ro(tops(br[-1])[1])))
+        s.append("이어서 %s 순입니다." % ", ".join(rest))
 
     thin = [a["name"] for a in axes if a["value"] == 1]
     zero = [a["name"] for a in axes if a["value"] == 0]
     if thin:
-        nm = _names(thin, 5)
-        s.append("반면 <b>%s</b>%s 한 문항씩만 나왔습니다." % (nm, _j(nm)))
+        t = _names(thin, 5)
+        s.append("반면 <b>%s</b>%s 각각 1문제만 출제되었습니다." % (t, _j(t)))
     if zero:
-        nm = _names(zero, 5)
-        s.append("<span class='zk'>%s</span>%s 한 문항도 나오지 않았습니다."
-                 % (nm, _j(nm)))
+        t = _names(zero, 5)
+        s.append("<span class='zk'>%s</span>%s 출제되지 않았습니다."
+                 % (t, _j(t)))
     return " ".join(s)
 
 
 def level_lede(data: dict, n_items: int) -> str:
-    """사고 수준과 난이도. 아래 칩에 다 있으니 쏠린 곳만 한 줄로 짚는다."""
+    """사고 수준과 난이도. 아래 칩에 다 있으니 쏠린 곳만 짚는다."""
     lv = data.get("levels") or Counter()
     df = data.get("diffs") or Counter()
     if not lv and not df:
@@ -278,16 +284,15 @@ def level_lede(data: dict, n_items: int) -> str:
     s = []
     if lv:
         k, v = lv.most_common(1)[0]
-        s.append("사고 수준은 <b>%s</b>에 %d문항이 몰려 있고," % (esc(k), v))
+        s.append("사고 수준은 <b>%s</b>에서 %d문제로 가장 많이 출제되었습니다."
+                 % (esc(k), v))
         miss = [x for x in LEVELS if not lv.get(x)]
         if miss:
-            nm = _names(miss, 3)
-            s.append("<b>%s</b>%s 묻는 문항은 없습니다." % (nm, _j(nm, "을를")))
-        else:
-            s[-1] = s[-1][:-1] + "."
+            t = _names(miss, 3)
+            s.append("<b>%s</b>%s 출제되지 않았습니다." % (t, _j(t)))
     if df:
         k, v = df.most_common(1)[0]
-        s.append("난이도는 <b>%s</b>%s %d문항으로 가장 많습니다."
+        s.append("난이도는 <b>%s</b>%s %d문제로 가장 많습니다."
                  % (esc(k), _j(k, "이가"), v))
     return " ".join(s)
 
@@ -297,12 +302,13 @@ def concept_lede(rows: list, n_items: int) -> str:
     if not rows:
         return ""
     thin = [r for r in rows if r["count"] == 1]
-    top = ["<b>%s %d</b>" % (esc(r["concept"]), r["count"]) for r in rows[:3]]
-    s = ["개념 <b>%d</b>개 가운데 가장 두꺼운 것은 %s입니다."
-         % (len(rows), " · ".join(top))]
+    t = " · ".join("<b>%s</b>에서 %d문제" % (esc(r["concept"]), r["count"])
+                   for r in rows[:3])
+    s = ["개념 단위로는 <b>%d개</b>가 확인되었습니다." % len(rows),
+         "%s로 가장 많이 출제되었습니다." % t]
     if thin:
-        s.append("<b>%d개</b>는 한 문항에만 나옵니다(%s)."
-                 % (len(thin), _names([r["concept"] for r in thin], 4)))
+        s.append("다만 <b>%d개</b> 개념은 1문제씩만 출제되어, "
+                 "다음 개정판에서 남길 것을 가려야 합니다." % len(thin))
     return " ".join(s)
 
 
@@ -720,7 +726,7 @@ def render_html(meta: dict, data: dict, n_items: int, glink: str = "",
                  "번호를 누르면 그 문제가 뜹니다. "
                  "한 문항이 여러 축에 걸치므로 축의 합은 문항 수보다 큽니다.</div>"
                  "</div>"
-                 % (trend_lede(chaps, data), "".join(cards),
+                 % (trend_lede(chaps, data, n_items), "".join(cards),
                     ("<div class='zline'><b>한 문항도 안 나온 축 %d개</b> — %s</div>"
                      % (len(allzero), esc(", ".join(allzero)))) if allzero else ""))
 
