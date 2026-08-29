@@ -192,3 +192,67 @@ def save(path: str, d: dict) -> None:
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(d, f, ensure_ascii=False, indent=1)
     os.replace(tmp, path)
+
+
+def _canon(name: str) -> str:
+    """띄어쓰기·대소문자·기호를 털어낸 비교용 열쇠."""
+    import re
+    import unicodedata
+
+    return re.sub(r"[^0-9a-z가-힣]+", "",
+                  unicodedata.normalize("NFKC", name or "").lower())
+
+
+def unify(items: list) -> dict:
+    """같은 말이 다르게 적힌 것을 하나로 모은다.
+
+    "UCP 600" 과 "UCP600" 은 띄어쓰기만 다른 같은 개념인데 따로 세어졌다.
+    3문항 · 3문항으로 갈려서 실제로는 6문항인 것이 안 보였다.
+
+    뜻으로 같은 것(신용장 / L/C)까지는 여기서 손대지 않는다. 그건 판단이고,
+    판단은 사람이나 모델이 할 일이다. 여기서는 **표기만** 맞춘다.
+
+    돌려주는 것은 {적힌 이름: 대표 이름}. 자기 자신만 가리키면 넣지 않는다.
+    """
+    seen = Counter()
+    for it in items:
+        for c in it.get("concepts") or []:
+            if c and c.strip():
+                seen[c.strip()] += 1
+
+    groups = defaultdict(list)
+    for name in seen:
+        groups[_canon(name)].append(name)
+
+    alias = {}
+    for names in groups.values():
+        if len(names) < 2:
+            continue
+        # 많이 쓰인 표기를 대표로. 같으면 띄어 쓴 쪽이 읽기 좋다.
+        best = sorted(names, key=lambda n: (-seen[n], " " not in n, n))[0]
+        for n in names:
+            if n != best:
+                alias[n] = best
+    return alias
+
+
+def apply_unify(items: list, alias: dict) -> int:
+    """문항의 개념 이름을 대표 이름으로 바꾼다. 바뀐 문항 수를 돌려준다."""
+    if not alias:
+        return 0
+    n = 0
+    for it in items:
+        cs = it.get("concepts") or []
+        if not cs:
+            continue
+        out, hit = [], False
+        for c in cs:
+            c2 = alias.get((c or "").strip(), (c or "").strip())
+            if c2 != c:
+                hit = True
+            if c2 and c2 not in out:          # 합치다 보면 같은 게 둘 생긴다
+                out.append(c2)
+        if hit or len(out) != len(cs):
+            it["concepts"] = out
+            n += 1
+    return n

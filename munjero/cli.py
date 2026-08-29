@@ -324,6 +324,11 @@ def cmd_report(args):
     r = report.build(_load(p["items"]), _load(p["answers"]), p["report"])
     _p("[05] 출제의 맥")
     _p("  문항 %d · 개념 %d개" % (r["items"], r["concepts"]))
+    u = r.get("unified") or {}
+    if u:
+        _p("  표기가 갈린 개념 %d개를 합쳤습니다 — %s"
+           % (len(u), ", ".join("%s → %s" % (k, v)
+                                for k, v in list(u.items())[:4])))
     if r["thin"]:
         _p("  한 문항뿐인 개념 %d개 — 다음 판에서 볼 자리입니다." % r["thin"])
     if r["overlaps"]:

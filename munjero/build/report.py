@@ -813,8 +813,14 @@ def build(items_doc: dict, answers_doc: dict, out_dir: str) -> dict:
     """개념 지도 HTML 과 CSV 를 낸다."""
     from .grader import merge
 
+    from . import knowmap
+
     merge(items_doc, answers_doc)          # 문항에 정답·메타를 얹는다
     items = items_doc["items"]
+    # "UCP 600" 과 "UCP600" 이 따로 세어져 3 · 3 으로 갈려 있었다.
+    # 묶기 전에 표기를 맞춘다 — 이걸 안 하면 축도 개수도 다 어긋난다.
+    alias = knowmap.unify(items)
+    knowmap.apply_unify(items, alias)
     os.makedirs(out_dir, exist_ok=True)
     kmap = knowledge_map(items, out_dir,
                          items_doc.get("exam_title") or items_doc.get("exam_id"))
@@ -835,7 +841,8 @@ def build(items_doc: dict, answers_doc: dict, out_dir: str) -> dict:
             "overlaps": len(data["overlaps"]),
             "untagged": len(data["untagged"]),
             "axes": sum(len(b["axes"]) for b in data["chapters"]),
-            "branches": len(data["chapters"])}
+            "branches": len(data["chapters"]),
+            "unified": alias}
 
 
 def knowledge_map(items: list, out_dir: str, exam_title: str,

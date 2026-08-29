@@ -138,7 +138,12 @@ def merge(items_doc, answers_doc):
 
 
 def build(items_doc, answers_doc, out_path, *, base_dir=".", no_cdn=False):
+    from . import knowmap
+
     stale, missing = merge(items_doc, answers_doc)
+    # 표기가 갈린 개념을 하나로. 출제의 맥과 채점기의 태그가 어긋나면
+    # 같은 개념이 두 화면에서 다른 이름으로 보인다.
+    knowmap.apply_unify(items_doc["items"], knowmap.unify(items_doc["items"]))
     dirs = [d for d in (items_doc.get("base_dir"), base_dir) if d]
     cache, lost = {}, []
     n_img = _embed_images(items_doc["items"], dirs, cache, lost)
