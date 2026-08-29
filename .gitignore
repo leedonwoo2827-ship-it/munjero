@@ -1,0 +1,11 @@
+work/
+dist/
+input/
+__pycache__/
+*.pyc
+*.tmp
+_*/
+.venv/
+venv/
+.DS_Store
+Thumbs.db

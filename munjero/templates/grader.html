@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TITLE}}</title>
+{{FONT_LINK}}
+<style>
+/* ═══════════════════════════════════════════════════════════════════
+   디자인 토큰 — 색은 전부 여기에만 있다. 아래 규칙에 하드코딩 금지.
+   브랜드는 teal, 정답은 라임그린. 둘을 12° 떼어놓은 이유는 DESIGN.md 참조
+   (원래 초록 #0f9d58 은 teal 과 색각이상에서 사실상 같은 색이다).
+   ═══════════════════════════════════════════════════════════════════ */
+:root{
+  --font:"Pretendard Variable",Pretendard,-apple-system,"맑은 고딕","Malgun Gothic",sans-serif;
+
+  --brand-ink:#0f3d3a;  --brand-ink-deep:#082a28;
+  --brand-800:#0a6f66;  --brand-700:#0b7c72;  --brand-600:#0d9488;
+  --brand-500:#14b8a6;  --brand-300:#5fd6c6;  --brand-100:#d5f4ef;  --brand-50:#eefbf8;
+
+  --correct:#4a9c2d; --correct-text:#2f6b13; --correct-soft:#f1f8e8; --correct-bd:#86c25a;
+  --wrong:#e23b4e;   --wrong-text:#c22638;   --wrong-soft:#fdebed;   --wrong-bd:#ef8f9b;
+  --flag:#cf7a0d;    --flag-soft:#fff3e1;
+
+  --ink:#181d26; --body:#333840; --muted:#5b6376; --faint:#8e96a8;
+  --canvas:#fff; --soft:#f6f8fc; --soft2:#eef2fb;
+  --line:#e6eaf2; --line-strong:#d4d9e4;
+
+  --r-sm:6px; --r-md:10px; --r-lg:12px; --r-xl:16px; --r-full:999px;
+  --shadow-xs:0 1px 2px rgba(16,24,40,.05);
+  --shadow-card:0 1px 3px rgba(16,24,40,.07),0 1px 2px rgba(16,24,40,.04);
+}
+*{box-sizing:border-box}
+body{margin:0;padding:0 0 80px;background:var(--soft);color:var(--body);
+  font:15px/1.7 var(--font);-webkit-font-smoothing:antialiased}
+.mj-wrap{max-width:1180px;margin:0 auto;padding:0 22px}
+
+/* ── 헤더 ───────────────────────────────────────────────────────── */
+.mj-nav{background:var(--brand-ink);color:#fff}
+.mj-nav-in{max-width:1180px;margin:0 auto;padding:0 22px;height:58px;
+  display:flex;align-items:center;gap:14px}
+.mj-nav-logo{font-weight:800;font-size:18px;letter-spacing:-.3px;color:#fff}
+.mj-nav-logo i{font-style:normal;color:var(--brand-300)}
+.mj-nav-sub{font-size:13px;color:var(--brand-300);margin-left:auto}
+.ex-head{padding:26px 0 16px}
+.ex-head h1{margin:0 0 6px;font-size:25px;color:var(--ink);letter-spacing:-.4px}
+.ex-head .sub{font-size:13.5px;color:var(--muted)}
+
+/* ── 검수 요약 바 ───────────────────────────────────────────────── */
+.ex-toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:6px 0 16px}
+.ex-toolbar button{border:1px solid var(--line-strong);background:var(--canvas);
+  color:var(--muted);font:inherit;font-weight:700;font-size:13px;
+  padding:7px 14px;border-radius:var(--r-full);cursor:pointer}
+.ex-toolbar button:hover{border-color:var(--brand-600);color:var(--brand-700)}
+.ex-toolbar button.on{background:var(--brand-700);border-color:var(--brand-700);color:#fff}
+.ex-toolbar .spacer{flex:1}
+
+/* ── 레이아웃 ───────────────────────────────────────────────────── */
+.ex-layout{display:grid;grid-template-columns:1fr 300px;gap:24px;align-items:start}
+@media (max-width:940px){.ex-layout{grid-template-columns:1fr}.ex-side{position:static}}
+
+/* ── 문항 카드 ──────────────────────────────────────────────────── */
+.q-card{background:var(--canvas);border:1px solid var(--line);border-radius:var(--r-xl);
+  box-shadow:var(--shadow-card);padding:20px 24px 22px;margin:14px 0}
+.q-head{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:11px}
+.q-number{font-weight:800;color:#fff;background:var(--brand-700);font-size:12.5px;
+  padding:4px 12px;border-radius:var(--r-full)}
+.q-pill{font-size:12px;font-weight:700;color:var(--brand-700);background:var(--brand-50);
+  padding:4px 11px;border-radius:var(--r-full)}
+.q-src{font:600 11.5px/1 ui-monospace,Consolas,monospace;color:var(--faint);margin-left:auto}
+.q-badge{font-size:11.5px;font-weight:800;padding:3px 10px;border-radius:var(--r-full)}
+.q-badge--low{background:var(--flag-soft);color:var(--flag)}
+.q-badge--review{background:var(--flag-soft);color:var(--flag)}
+.q-badge--none{background:var(--wrong-soft);color:var(--wrong-text)}
+.q-badge--free{background:var(--soft2);color:var(--muted)}
+.q-stem{font-size:16px;font-weight:600;color:var(--ink);margin:0}
+.q-passage{margin-top:12px;padding:13px 16px;background:var(--soft2);
+  border-radius:var(--r-md);font-size:14.5px;white-space:pre-wrap}
+.q-code{margin:12px 0 0;background:#0f172a;color:#e2e8f0;border-radius:var(--r-md);
+  padding:13px 16px;overflow-x:auto;font:13.5px/1.5 Consolas,"D2Coding",monospace}
+.q-table-wrap{overflow-x:auto;margin-top:12px}
+.q-table{border-collapse:collapse;font-size:13.5px}
+.q-table th,.q-table td{border:1px solid var(--line-strong);padding:6px 11px;text-align:center}
+.q-table th{background:var(--soft2);font-weight:700;color:var(--ink)}
+.q-figure{margin-top:12px}
+.q-figure img{max-width:520px;width:100%;border:1px solid var(--line);
+  border-radius:var(--r-md);background:#fff;padding:6px}
+
+/* ── 보기 ───────────────────────────────────────────────────────── */
+.q-choices{list-style:none;display:flex;flex-direction:column;gap:8px;margin:14px 0 0;padding:0}
+.q-choice{display:flex;gap:11px;align-items:flex-start;padding:10px 14px;
+  border:1px solid var(--line-strong);border-radius:var(--r-md);background:var(--canvas);
+  font-size:15px;color:var(--body);cursor:pointer;transition:border-color .12s}
+.q-choice:hover{border-color:var(--brand-500)}
+.q-choice__marker{font-weight:800;color:var(--brand-700);flex:0 0 auto;
+  min-width:1.3em;text-align:center}
+.q-choice__chip{margin-left:auto;flex:0 0 auto;font-size:11.5px;font-weight:800;
+  padding:2px 9px;border-radius:var(--r-full)}
+
+/* 선택 상태에 tint 를 쓰지 않는다 — 채점 후 정답 tint 와 ΔE 2.0 이라
+   "아무것도 안 바뀐 것처럼" 보인다. 테두리와 마커 반전으로만 표시한다. */
+.q-choice--selected{border-color:var(--brand-600);border-width:2px;padding:9px 13px;
+  box-shadow:0 0 0 3px var(--brand-50)}
+.q-choice--selected .q-choice__marker{background:var(--brand-600);color:#fff;
+  border-radius:var(--r-full)}
+
+/* 색만으로 의미를 전하지 않는다 — 테두리 + 기호 + 라벨을 함께 쓴다 */
+.q-choice--correct{border-color:var(--correct-bd);border-width:2px;padding:9px 13px;
+  background:var(--correct-soft)}
+.q-choice--correct .q-choice__marker{color:var(--correct-text)}
+.q-choice--correct .q-choice__chip{background:var(--correct);color:#fff}
+.q-choice--wrong{border-color:var(--wrong-bd);border-width:2px;padding:9px 13px;
+  background:var(--wrong-soft)}
+.q-choice--wrong .q-choice__marker{color:var(--wrong-text)}
+.q-choice--wrong .q-choice__chip{background:var(--wrong);color:#fff}
+.q-card.is-graded .q-choice{cursor:default}
+
+/* ── 해설 ───────────────────────────────────────────────────────── */
+.q-explain{margin-top:14px;padding:14px 17px;background:var(--soft);
+  border-left:4px solid var(--brand-600);border-radius:var(--r-md);
+  font-size:14.5px;display:none}
+.q-explain.is-open{display:block}
+.q-explain__label{display:block;font-weight:800;color:var(--brand-ink);margin-bottom:7px}
+.q-explain p{margin:.5em 0}
+.q-explain ul{margin:.5em 0;padding-left:1.3em}
+.q-explain code{background:var(--soft2);padding:1px 5px;border-radius:4px;
+  font:.92em Consolas,monospace}
+.q-why{margin-top:10px;padding-top:10px;border-top:1px dashed var(--line-strong)}
+.q-why li{margin:.25em 0;font-size:13.5px;color:var(--muted)}
+.q-free-note{margin-top:12px;padding:10px 14px;border:1px dashed var(--line-strong);
+  border-radius:var(--r-md);font-size:12.5px;color:var(--faint)}
+
+/* ── 사이드 ─────────────────────────────────────────────────────── */
+.ex-side{position:sticky;top:18px;display:flex;flex-direction:column;gap:14px}
+.score-card{background:var(--canvas);border:1px solid var(--line);border-radius:var(--r-xl);
+  box-shadow:var(--shadow-card);padding:20px}
+.score-card h3{margin:0 0 16px;font-size:15.5px;color:var(--ink)}
+.score-gauge{display:flex;align-items:center;gap:15px}
+.score-gauge .ring{flex:0 0 auto}
+.score-gauge .big{font-size:23px;font-weight:800;color:var(--brand-700);line-height:1}
+.score-gauge .k2{font-size:12.5px;color:var(--muted);margin-top:4px}
+.score-actions{display:flex;flex-direction:column;gap:9px;margin-top:18px}
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;
+  border:1px solid transparent;border-radius:var(--r-md);padding:11px 14px;
+  font:inherit;font-weight:700;font-size:14.5px;cursor:pointer}
+.btn--primary{background:var(--brand-700);color:#fff}
+.btn--primary:hover{background:var(--brand-800)}
+.btn--outline{background:var(--canvas);color:var(--ink);border-color:var(--line-strong)}
+.btn--outline:hover{border-color:var(--brand-600);color:var(--brand-700)}
+.side-note{font-size:12.5px;color:var(--faint);line-height:1.6}
+.side-note b{color:var(--flag)}
+
+/* ── 인쇄 ───────────────────────────────────────────────────────── */
+@media print{
+  body{background:#fff;padding:0}
+  .mj-nav,.ex-toolbar,.ex-side,.score-card{display:none!important}
+  .ex-layout{display:block}
+  .q-card{break-inside:avoid;box-shadow:none;border:1px solid #ccc;margin:8px 0}
+  .q-explain{display:block!important}
+  .q-choice--correct .q-choice__marker::after{content:" \2713"}
+}
+</style>
+</head>
+<body>
+
+<header class="mj-nav">
+  <div class="mj-nav-in">
+    <span class="mj-nav-logo">문제<i>로</i></span>
+    <span class="mj-nav-sub">{{SUBTITLE}}</span>
+  </div>
+</header>
+
+<div class="mj-wrap">
+  <div class="ex-head">
+    <h1>{{TITLE}}</h1>
+    <div class="sub" id="exSub"></div>
+  </div>
+
+  <div class="ex-toolbar" id="exToolbar"></div>
+
+  <div class="ex-layout">
+    <main id="exList"></main>
+    <aside class="ex-side">
+      <div class="score-card">
+        <h3>채점 현황</h3>
+        <div class="score-gauge">
+          <div class="ring" id="ring"></div>
+          <div>
+            <div class="big"><span id="scoreNum">0</span> / <span id="scoreTot">0</span></div>
+            <div class="k2" id="scoreK">입력한 문항 0</div>
+          </div>
+        </div>
+        <div class="score-actions">
+          <button class="btn btn--primary" onclick="grade()">채점하기</button>
+          <button class="btn btn--outline" onclick="reveal()">정답 보기</button>
+          <button class="btn btn--outline" onclick="resetAll()">초기화</button>
+        </div>
+      </div>
+      <div class="score-card">
+        <h3>검수 안내</h3>
+        <div class="side-note" id="sideNote"></div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script>{{DATA_JS}}</script>
+<script>{{APP_JS}}</script>
+</body>
+</html>
