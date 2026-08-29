@@ -22,6 +22,8 @@ from collections import Counter, defaultdict
 
 from ..answer import codex_client as C
 
+ORPHAN = "그 밖"      # 어디에도 안 붙은 개념을 담는 자리. 축이 아니다.
+
 SCHEMA = {
     "type": "object",
     "additionalProperties": False,
@@ -142,7 +144,7 @@ def make(exam_title: str, items: list, model: str = "", timeout: int = 300) -> d
     orphans = sorted(known - used, key=lambda x: (-counts[x], x))
     if orphans and branches:
         # 버리지 않는다. 어디에도 안 붙은 개념이 있다는 사실 자체가 정보다.
-        branches[-1]["axes"].append({"name": "그 밖", "concepts": orphans})
+        branches[-1]["axes"].append({"name": ORPHAN, "concepts": orphans})
 
     return {"branches": branches,
             "fingerprint": fingerprint(known),

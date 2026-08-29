@@ -231,14 +231,18 @@ def trend_lede(chaps: list, data: dict, n_items: int) -> str:
     강의 대본처럼 "이번 시험은 무엇이 몇 문제 출제되었다" 를 적는다.
     그림은 모양만 보여 주고, 이름과 숫자는 글이 말해야 한다.
     """
-    axes = [a for c in chaps for a in c["axes"]]
+    from .knowmap import ORPHAN
+
+    # "그 밖" 은 어디에도 안 붙은 개념을 담는 자리다. 그림에는 남기되
+    # 문장에서는 뺀다 — 주제 이름처럼 읽히면 없는 단원을 말하는 셈이 된다.
+    axes = [a for c in chaps for a in c["axes"] if a["name"] != ORPHAN]
     if not axes:
         return ""
     br = sorted(chaps, key=lambda c: -c["total"])
 
     def top(c, k=1):
-        return [a for a in sorted(c["axes"], key=lambda a: -a["value"])[:k]
-                if a["value"]]
+        return [a for a in sorted(c["axes"], key=lambda a: -a["value"])
+                if a["value"] and a["name"] != ORPHAN][:k]
 
     def at(a):
         return "<b>%s</b>에서 %d문제" % (esc(a["name"]), a["value"])
@@ -307,8 +311,10 @@ def concept_lede(rows: list, n_items: int) -> str:
     s = ["개념 단위로는 <b>%d개</b>가 확인되었습니다." % len(rows),
          "%s로 가장 많이 출제되었습니다." % t]
     if thin:
-        s.append("다만 <b>%d개</b> 개념은 1문제씩만 출제되어, "
-                 "다음 개정판에서 남길 것을 가려야 합니다." % len(thin))
+        # 이 리포트는 저자가 보지만, 문장은 강사가 수험생에게 하듯 쓴다.
+        # "개정판에서 남길 것을 가려야" 는 저자에게 하는 말이라 어울리지 않았다.
+        s.append("다만 <b>%d개</b> 개념은 1문제씩만 출제되었습니다." % len(thin))
+        s.append("그만큼 범위가 넓으니 자주 나오는 개념부터 잡는 것이 좋습니다.")
     return " ".join(s)
 
 
@@ -730,7 +736,7 @@ def render_html(meta: dict, data: dict, n_items: int, glink: str = "",
                     ("<div class='zline'><b>한 문항도 안 나온 축 %d개</b> — %s</div>"
                      % (len(allzero), esc(", ".join(allzero)))) if allzero else ""))
 
-    o.append("<div class='card'><h2>어느 개념이 두껍고 어디가 얇은가</h2>"
+    o.append("<div class='card'><h2>어느 개념이 많이 나왔나</h2>"
              "<div class='s'>%s</div>" % concept_lede(rows, n_items))
     for r in rows:
         w = max(4, round(r["count"] / mx * 100))
