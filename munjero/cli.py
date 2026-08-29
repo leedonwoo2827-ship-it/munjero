@@ -151,6 +151,10 @@ def cmd_build(args):
     _p("  -> %s  (%.0f KB)" % (r["path"], r["bytes"] / 1024.0))
     if r["images"]:
         _p("  그림 %d개를 파일 안에 심었습니다." % r["images"])
+    if r.get("lost_images"):
+        _p("  그림 %d개를 찾지 못했습니다: %s"
+           % (len(r["lost_images"]), ", ".join(r["lost_images"][:5])))
+        _p("     시험지 HTML 옆에 figs 폴더가 있는지 확인하세요.")
     if r["missing"]:
         _p("  정답 없음 %d문항: %s" % (len(r["missing"]), ", ".join(map(str, r["missing"][:12]))))
     if r["stale"]:

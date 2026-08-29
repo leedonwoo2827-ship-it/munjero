@@ -140,6 +140,21 @@ function render() {
     h.push('<div class="q-explain"></div>');
     h.push("</div>");
   });
+  var figs = D.appendix_figures || [];
+  if (figs.length && filter === "all") {
+    h.push('<div class="q-card"><div class="q-head">'
+      + '<span class="q-number">부록</span>'
+      + '<span class="q-badge q-badge--free">배치 미확정</span></div>'
+      + '<p class="q-stem">원본에 포함된 이미지 ' + figs.length + '개</p>'
+      + '<div class="q-free-note">어느 문항에 붙는지 원본 정보만으로 확정할 수 없어'
+      + ' 여기에 모아 둡니다. 배치가 정해지면 시험지 HTML의 해당 문항으로 옮기세요.</div>'
+      + '<div class="q-appendix">'
+      + figs.map(function (f) {
+          return '<figure><img src="' + esc(f.src) + '" alt="" loading="lazy">'
+            + '<figcaption>' + esc(f.caption || "") + "</figcaption></figure>";
+        }).join("")
+      + "</div></div>");
+  }
   $("#exList").innerHTML = h.join("") ||
     '<div class="q-card">해당하는 문항이 없습니다.</div>';
   if (graded || revealed) applyResults();

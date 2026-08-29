@@ -28,9 +28,44 @@ def inline_json(obj) -> str:
     return s.replace("</", "<\\/").replace("<!--", "<\\!--")
 
 
-def _embed_images(items, base_dir):
+def _to_data_uri(path, cache):
+    if path in cache:
+        return cache[path]
+    mime = mimetypes.guess_type(path)[0] or "image/png"
+    with open(path, "rb") as f:
+        cache[path] = "data:%s;base64,%s" % (
+            mime, base64.b64encode(f.read()).decode("ascii"))
+    return cache[path]
+
+
+def _embed_appendix(figs, dirs, cache, lost):
+    out = []
+    for f in figs or []:
+        src = f.get("src", "")
+        if src.startswith("data:"):
+            out.append(f)
+            continue
+        path = _find(src, dirs)
+        if path:
+            out.append({"src": _to_data_uri(path, cache), "caption": f.get("caption", "")})
+        else:
+            lost.append(src)          # 조용히 버리지 않는다
+    return out
+
+
+def _find(src, dirs):
+    rel = src.replace("/", os.sep)
+    for d in dirs:
+        p = os.path.join(d, rel)
+        if os.path.isfile(p):
+            return p
+    return None
+
+
+def _embed_images(items, dirs, cache=None, lost=None):
     """그림을 data URI 로 굽는다. 파일 하나로 떼어 주는 게 목표다."""
-    cache = {}
+    cache = {} if cache is None else cache
+    lost = [] if lost is None else lost
     n = 0
     for it in items:
         out = []
@@ -38,16 +73,15 @@ def _embed_images(items, base_dir):
             if src.startswith("data:"):
                 out.append(src)
                 continue
-            path = os.path.join(base_dir, src.replace("/", os.sep))
-            if not os.path.isfile(path):
+            path = _find(src, dirs)
+            if not path:
+                lost.append(src)
                 continue
-            if path not in cache:
-                mime = mimetypes.guess_type(path)[0] or "image/png"
-                with open(path, "rb") as f:
-                    cache[path] = "data:%s;base64,%s" % (
-                        mime, base64.b64encode(f.read()).decode("ascii"))
+            before = len(cache)
+            uri = _to_data_uri(path, cache)
+            if len(cache) > before:
                 n += 1
-            out.append(cache[path])
+            out.append(uri)
         it["figures"] = out
     return n
 
@@ -75,7 +109,11 @@ def merge(items_doc, answers_doc):
 
 def build(items_doc, answers_doc, out_path, *, base_dir=".", no_cdn=False):
     stale, missing = merge(items_doc, answers_doc)
-    n_img = _embed_images(items_doc["items"], base_dir)
+    dirs = [d for d in (items_doc.get("base_dir"), base_dir) if d]
+    cache, lost = {}, []
+    n_img = _embed_images(items_doc["items"], dirs, cache, lost)
+    appendix = _embed_appendix(items_doc.get("appendix_figures"), dirs, cache, lost)
+    n_img += len(appendix)
 
     slim = []
     for it in items_doc["items"]:
@@ -84,7 +122,8 @@ def build(items_doc, answers_doc, out_path, *, base_dir=".", no_cdn=False):
             "tables", "figures", "choices", "markers", "answer_index",
             "explanation", "confidence", "wrong_reasons", "needs_review", "source")})
     data = {"exam_id": items_doc["exam_id"], "exam_title": items_doc["exam_title"],
-            "source_file": items_doc.get("source_file", ""), "items": slim}
+            "source_file": items_doc.get("source_file", ""), "items": slim,
+            "appendix_figures": appendix}
 
     html = open(os.path.join(TEMPLATES, "grader.html"), encoding="utf-8").read()
     app = open(os.path.join(TEMPLATES, "grader.js"), encoding="utf-8").read()
@@ -102,4 +141,4 @@ def build(items_doc, answers_doc, out_path, *, base_dir=".", no_cdn=False):
     os.replace(tmp, out_path)
 
     return {"path": out_path, "bytes": os.path.getsize(out_path),
-            "stale": stale, "missing": missing, "images": n_img}
+            "stale": stale, "missing": missing, "images": n_img, "lost_images": lost}

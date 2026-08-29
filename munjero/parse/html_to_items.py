@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 
 from bs4 import BeautifulSoup
@@ -51,6 +52,7 @@ def _table(node):
 
 def parse_html(path: str) -> dict:
     soup = BeautifulSoup(open(path, encoding="utf-8").read(), "lxml")
+    base_dir = os.path.dirname(os.path.abspath(path))
 
     def meta(name, default=""):
         tag = soup.find("meta", attrs={"name": "munjero:" + name})
@@ -63,9 +65,16 @@ def parse_html(path: str) -> dict:
         "exam_title": meta("title") or (soup.title.string if soup.title else exam_id),
         "round": meta("round"),
         "source_file": meta("source"),
+        # 그림 상대경로는 시험지 HTML 옆을 기준으로 한다. 빌드가 폴더를 옮겨도 찾아간다.
+        "base_dir": base_dir,
         "extractor": meta("extractor"),
         "sections": [],
         "items": [],
+        # 어느 문항에 붙는지 알 수 없어 부록으로 남은 그림. 버리지 않고 끝까지 들고 간다.
+        "appendix_figures": [
+            {"src": img.get("src", ""), "caption": _txt(img.find_parent("figure"))}
+            for img in soup.select(".figs figure img")
+        ],
     }
 
     # 공유지문을 먼저 모아 둔다 — 문항이 covers 로 참조한다
