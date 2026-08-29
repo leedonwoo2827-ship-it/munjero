@@ -151,7 +151,8 @@ def qn(numbers: list, link: str, limit: int = 0) -> str:
     # 파일명이 URL 인코딩되어 %ED 같은 게 들어 있다. % 서식으로 다루면 터진다.
     out = []
     for n in ns:
-        href = esc(link + "?review=1#q" + n) if link else "#"
+        from urllib.parse import quote as _q
+        href = esc(link + "?review=1#q" + _q(n)) if link else "#"
         out.append("<a class='qn' data-q='" + esc(n) + "' href='" + href
                    + "'>" + esc(n) + "</a>")
     return ", ".join(out) + more
@@ -179,6 +180,130 @@ def qdata(items: list) -> list:
             "im": len(it.get("images") or it.get("figures") or []),
         })
     return out
+
+
+#  받침 유무로 조사를 고른다. "중 가 19문항", "3개 은" 처럼 나오면
+#  읽는 사람이 기계가 쓴 글로 본다.
+_D_JONG = {"0": 1, "1": 1, "3": 1, "6": 1, "7": 1, "8": 1,
+           "2": 0, "4": 0, "5": 0, "9": 0}          # 영 일 삼 육 칠 팔 / 이 사 오 구
+_A_JONG = set("bcdgklmnprstxz")                     # 알파벳으로 끝나면 소리로 짐작
+
+
+def _jong(word: str) -> bool:
+    """마지막 글자에 받침이 있는가."""
+    for ch in reversed(word or ""):
+        if "가" <= ch <= "힣":
+            return (ord(ch) - 0xAC00) % 28 != 0
+        if ch.isdigit():
+            return bool(_D_JONG.get(ch, 1))
+        if ch.isalpha():
+            return ch.lower() in _A_JONG
+    return False
+
+
+def _j(word: str, pair: str = "은는") -> str:
+    """word 뒤에 붙일 조사. pair 는 '은는' '이가' '을를' 처럼 받침있음/없음 순."""
+    return pair[0] if _jong(word) else pair[1]
+
+
+def _ro(word: str) -> str:
+    """으로 / 로. ㄹ 받침은 '로' 쪽이다 — "매매계약 6으로", "원가요소 4로"."""
+    for ch in reversed(word or ""):
+        if "가" <= ch <= "힣":
+            j = (ord(ch) - 0xAC00) % 28
+            return "로" if j in (0, 8) else "으로"     # 8 = ㄹ
+        if ch.isdigit():
+            # 영(ㅇ) 삼(ㅁ) 육(ㄱ) 만 "으로". 일 칠 팔 은 ㄹ 이라 "로" 쪽이다.
+            return "으로" if ch in "036" else "로"
+        if ch.isalpha():
+            return "으로" if ch.lower() in _A_JONG else "로"
+    return "로"
+
+
+def _names(xs, n=3, sep=" · "):
+    return sep.join(esc(x) for x in xs[:n]) + (
+        " 외 %d개" % (len(xs) - n) if len(xs) > n else "")
+
+
+def trend_lede(chaps: list, data: dict) -> str:
+    """출제 경향을 문장으로. 읽는 사람이 알고 싶은 건 사용법이 아니라 결과다.
+
+    갈래를 두꺼운 순으로 훑으며 "이번 시험은 이렇게 나왔다" 를 적는다.
+    그림은 모양만 보여 주고, 이름과 숫자는 글이 말해야 한다.
+    """
+    axes = [a for c in chaps for a in c["axes"]]
+    if not axes:
+        return ""
+    br = sorted(chaps, key=lambda c: -c["total"])
+
+    def tops(c, k=2):
+        xs = [a for a in sorted(c["axes"], key=lambda a: -a["value"])[:k]
+              if a["value"]]
+        txt = " · ".join("%s %d" % (a["name"], a["value"]) for a in xs)
+        html = " · ".join("<b>%s %d</b>" % (esc(a["name"]), a["value"])
+                          for a in xs)
+        return html, txt
+
+    s = []
+    head = br[0]
+    h, t = tops(head)
+    s.append("이번 시험은 <b>%s</b>%s %d문항으로 가장 두껍고, 그중 %s%s 중심입니다."
+             % (esc(head["subject"]), _j(head["subject"], "이가"),
+                head["total"], h, _j(t, "이가")))
+    rest = ["<b>%s</b> %d문항은 %s"
+            % (esc(c["subject"]), c["total"], tops(c)[0]) for c in br[1:]]
+    if rest:
+        body = (", ".join(rest[:-1]) + (", " if len(rest) > 1 else "")
+                + rest[-1])
+        s.append("이어서 %s%s 나왔습니다." % (body, _ro(tops(br[-1])[1])))
+
+    thin = [a["name"] for a in axes if a["value"] == 1]
+    zero = [a["name"] for a in axes if a["value"] == 0]
+    if thin:
+        nm = _names(thin, 5)
+        s.append("반면 <b>%s</b>%s 한 문항씩만 나왔습니다." % (nm, _j(nm)))
+    if zero:
+        nm = _names(zero, 5)
+        s.append("<span class='zk'>%s</span>%s 한 문항도 나오지 않았습니다."
+                 % (nm, _j(nm)))
+    return " ".join(s)
+
+
+def level_lede(data: dict, n_items: int) -> str:
+    """사고 수준과 난이도. 아래 칩에 다 있으니 쏠린 곳만 한 줄로 짚는다."""
+    lv = data.get("levels") or Counter()
+    df = data.get("diffs") or Counter()
+    if not lv and not df:
+        return ""
+    s = []
+    if lv:
+        k, v = lv.most_common(1)[0]
+        s.append("사고 수준은 <b>%s</b>에 %d문항이 몰려 있고," % (esc(k), v))
+        miss = [x for x in LEVELS if not lv.get(x)]
+        if miss:
+            nm = _names(miss, 3)
+            s.append("<b>%s</b>%s 묻는 문항은 없습니다." % (nm, _j(nm, "을를")))
+        else:
+            s[-1] = s[-1][:-1] + "."
+    if df:
+        k, v = df.most_common(1)[0]
+        s.append("난이도는 <b>%s</b>%s %d문항으로 가장 많습니다."
+                 % (esc(k), _j(k, "이가"), v))
+    return " ".join(s)
+
+
+def concept_lede(rows: list, n_items: int) -> str:
+    """개념 쪽 문장. 몇 개가 한 번뿐인지가 개정판에서 가장 먼저 볼 숫자다."""
+    if not rows:
+        return ""
+    thin = [r for r in rows if r["count"] == 1]
+    top = ["<b>%s %d</b>" % (esc(r["concept"]), r["count"]) for r in rows[:3]]
+    s = ["개념 <b>%d</b>개 가운데 가장 두꺼운 것은 %s입니다."
+         % (len(rows), " · ".join(top))]
+    if thin:
+        s.append("<b>%d개</b>는 한 문항에만 나옵니다(%s)."
+                 % (len(thin), _names([r["concept"] for r in thin], 4)))
+    return " ".join(s)
 
 
 def _slug(s: str) -> str:
@@ -262,6 +387,14 @@ def radar(axes: list, title: str = "", size: int = 190, group: str = "") -> str:
 SIDE_JS = """
 (function () {
   var Q = window.MJ_Q || {}, AX = window.MJ_AX || [], GL = window.MJ_GRADER || '';
+  // 폴더에서 파일로 열면 ../04_grader/... 가 맞지만, 웹 화면에서 열면
+  // /api/exam/<id>/report 아래라 그 상대경로가 /api/exam/04_grader/... 가 된다.
+  // 어디로 열렸는지 보고 주소를 바꾼다.
+  var api = location.pathname.match(/^(.*\\/exam\\/[^\\/]+)\\/report$/);
+  if (api) GL = api[1] + '/grader';
+  function href(n) {
+    return GL ? GL + '?review=1#q' + encodeURIComponent(n) : '';
+  }
   var box = document.getElementById('qbd');
   if (!box) return;
   var axById = {}, back = null;
@@ -275,7 +408,7 @@ SIDE_JS = """
   function nums(ns) {
     return ns.map(function (n) {
       return "<a class='qn' data-q='" + esc(n) + "' href='"
-        + (GL ? esc(GL) + '?review=1#q' + esc(n) : '#') + "'>" + esc(n) + "</a>";
+        + (esc(href(n)) || '#') + "'>" + esc(n) + "</a>";
     }).join(', ');
   }
   function guide() {
@@ -327,8 +460,8 @@ SIDE_JS = """
     });
     if (d.x) h += "<div class='sx'><b>해설</b><br>" + esc(d.x) + "</div>";
     if (GL) {
-      h += "<a class='sgo' target='_blank' href='" + esc(GL) + "?review=1#q"
-        + esc(d.n) + "'>채점기에서 보기 &rarr;</a>";
+      h += "<a class='sgo' target='_blank' href='" + esc(href(d.n))
+        + "'>채점기에서 보기 &rarr;</a>";
     }
     box.innerHTML = h;
     reveal();
@@ -358,6 +491,11 @@ SIDE_JS = """
       axis(e.target.getAttribute('data-ax'));
     }
   });
+  if (api) {
+    document.querySelectorAll('a.qn[data-q]').forEach(function (a) {
+      a.setAttribute('href', href(a.getAttribute('data-q')) || '#');
+    });
+  }
   guide();
 })();
 """
@@ -502,6 +640,8 @@ a.qn:hover{background:var(--brand-50);border-bottom-color:var(--brand)}
 .radar .lb.zero .n{fill:var(--warn)}
 .radar .lb .n{font-weight:800;font-size:14.5px;fill:var(--brand)}
 .radar .lb.thin .n{fill:var(--warn)}
+.hint{margin-top:14px;padding-top:12px;border-top:1px solid var(--line);
+ font-size:12px;color:var(--faint);line-height:1.7}
 .rcap{text-align:center;font-size:12px;color:var(--faint);margin-top:-4px}
 .zk{color:var(--warn);font-weight:800}
 .zline{margin-top:14px;padding:11px 14px;background:var(--warn-bg);
@@ -574,21 +714,18 @@ def render_html(meta: dict, data: dict, n_items: int, glink: str = "",
         # 왼쪽에 그림, 오른쪽에 목록과 문항. 채점기로 건너뛰면 보던 자리를
         # 잃는다. 축을 훑다가 "이게 무슨 문제였더라" 를 그 자리에서 확인해야 한다.
         o.append("<div class='card'><h2>출제 경향</h2>"
-                 "<div class='s'>축은 이 시험에서 실제로 나온 "
-                 "<b>개념을 한 단계 묶어 올린 것</b>입니다. "
-                 "<b>축을 누르면</b> 오른쪽에 그 축의 문항이 뜨고, "
-                 "<b>번호를 누르면</b> 그 문제가 뜹니다. "
-                 "움푹 팬 곳이 적게 나온 자리, "
-                 "<span class='zk'>주황</span>은 한 문항도 없는 자리입니다. "
+                 "<div class='s'>%s</div>"
+                 "<div class='radars'>%s</div>%s"
+                 "<div class='hint'>축을 누르면 오른쪽에 그 축의 문항이, "
+                 "번호를 누르면 그 문제가 뜹니다. "
                  "한 문항이 여러 축에 걸치므로 축의 합은 문항 수보다 큽니다.</div>"
-                 "<div class='radars'>%s</div>%s</div>"
-                 % ("".join(cards),
+                 "</div>"
+                 % (trend_lede(chaps, data), "".join(cards),
                     ("<div class='zline'><b>한 문항도 안 나온 축 %d개</b> — %s</div>"
                      % (len(allzero), esc(", ".join(allzero)))) if allzero else ""))
 
     o.append("<div class='card'><h2>어느 개념이 두껍고 어디가 얇은가</h2>"
-             "<div class='s'>많이 나온 순입니다. 한 문항뿐인 개념은 "
-             "다음 판에서 늘릴지, 아예 뺄지 정할 자리입니다.</div>")
+             "<div class='s'>%s</div>" % concept_lede(rows, n_items))
     for r in rows:
         w = max(4, round(r["count"] / mx * 100))
         nums = qn(r["numbers"], glink, limit=14)
@@ -603,7 +740,7 @@ def render_html(meta: dict, data: dict, n_items: int, glink: str = "",
     o.append("</div>")
 
     o.append("<div class='card'><h2>사고 수준과 난이도</h2>"
-             "<div class='s'>한쪽으로 몰려 있으면 개정판에서 균형을 볼 자리입니다.</div>"
+             "<div class='s'>%s</div>" % level_lede(data, n_items) +
              "<div class='dist'>")
     for lv in LEVELS:
         o.append("<span>%s <b>%d</b></span>" % (lv, data["levels"].get(lv, 0)))

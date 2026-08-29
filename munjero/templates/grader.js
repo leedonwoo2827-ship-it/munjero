@@ -480,9 +480,13 @@ document.addEventListener("keydown", function (e) {
 
 /* 출제의 맥에서 "12번" 을 누르면 #q12 로 들어온다. 그 문항으로 데려간다. */
 function jumpToHash() {
-  var m = /^#q(\d+)$/.exec(location.hash || "");
-  if (!m) return;
-  var card = document.querySelector('.q-card[data-number="' + m[1] + '"]');
+  // 번호가 늘 숫자인 건 아니다. 전산회계 실무는 "문제2-5" 다.
+  var h = location.hash || "";
+  if (h.slice(0, 2) !== "#q") return;
+  var n;
+  try { n = decodeURIComponent(h.slice(2)); } catch (e) { n = h.slice(2); }
+  if (!n) return;
+  var card = document.querySelector('.q-card[data-number="' + cssEsc(n) + '"]');
   if (!card) return;
   card.scrollIntoView({block: "center"});
   card.classList.add("q-jump");
