@@ -40,14 +40,44 @@ def item_hash(question: str, choices) -> str:
     return "sha1:" + hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
 
 
+def _span(el, name):
+    try:
+        v = int(el.get(name, 1))
+        return v if 1 <= v <= 64 else 1
+    except (TypeError, ValueError):
+        return 1
+
+
 def _table(node):
-    rows = []
-    for tr in node.find_all("tr"):
-        rows.append([_txt(td) for td in tr.find_all(["td", "th"])])
-    if not rows:
+    """표를 셀 좌표로 읽는다.
+
+    행마다 텍스트 배열로 눕히면 rowspan/colspan 이 사라져서
+    사업자등록증·세금계산서처럼 병합이 많은 서식이 칸이 어긋난 채 나온다.
+    좌표를 그대로 들고 가야 채점기에서 원래 모양으로 다시 그릴 수 있다.
+    """
+    trs = node.find_all("tr")
+    if not trs:
         return None
-    return {"columns": rows[0], "rows": rows[1:]} if len(rows) > 1 else \
-           {"columns": [], "rows": rows}
+
+    occupied = set()
+    cells = []
+    n_cols = 0
+    for r, tr in enumerate(trs):
+        c = 0
+        for td in tr.find_all(["td", "th"], recursive=False) or tr.find_all(["td", "th"]):
+            while (r, c) in occupied:
+                c += 1
+            rs, cs = _span(td, "rowspan"), _span(td, "colspan")
+            for dr in range(rs):
+                for dc in range(cs):
+                    occupied.add((r + dr, c + dc))
+            cells.append({"r": r, "c": c, "rs": rs, "cs": cs,
+                          "t": _txt(td), "th": td.name == "th"})
+            c += cs
+            n_cols = max(n_cols, c)
+    if not cells:
+        return None
+    return {"rows": len(trs), "cols": n_cols, "cells": cells}
 
 
 def parse_html(path: str) -> dict:
@@ -78,7 +108,7 @@ def parse_html(path: str) -> dict:
     }
 
     # 공유지문을 먼저 모아 둔다 — 문항이 covers 로 참조한다
-    stimulus = {}
+    stimulus, stim_figs = {}, {}
     for sg in soup.select("section.stimulus-group"):
         key = sg.get("data-covers", "")
         parts = []
@@ -88,6 +118,8 @@ def parse_html(path: str) -> dict:
         for bq in sg.select(".passage"):
             parts.append(_txt(bq))
         stimulus[key] = "\n\n".join(p for p in parts if p)
+        # 지문 원본 이미지는 그 지문을 쓰는 문항들이 함께 들고 간다
+        stim_figs[key] = [img.get("src", "") for img in sg.select(".figure img, img.fig")]
 
     for sec in soup.select("section.exam-section"):
         doc["sections"].append({
@@ -136,6 +168,7 @@ def parse_html(path: str) -> dict:
         gid = q.get("data-stimulus")
         # 공유지문이 있으면 문항 지문 앞에 붙인다 — 해설 생성기가 한 덩어리로 읽어야 한다
         pass_parts = ([stimulus[gid]] if gid in stimulus else []) + passages
+        figures = (stim_figs.get(gid) or []) + figures
         item = {
             "id": "%s#%s" % (exam_id, no),
             "number": no,

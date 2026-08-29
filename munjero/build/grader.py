@@ -104,6 +104,7 @@ def merge(items_doc, answers_doc):
         it["explanation"] = a.get("explanation")
         it["confidence"] = a.get("confidence")
         it["wrong_reasons"] = a.get("wrong_reasons") or []
+        it["diagram_svg"] = a.get("diagram_svg")
     return stale, missing
 
 
@@ -120,7 +121,8 @@ def build(items_doc, answers_doc, out_path, *, base_dir=".", no_cdn=False):
         slim.append({k: it.get(k) for k in (
             "id", "number", "subject", "answer_type", "question", "passage",
             "tables", "figures", "choices", "markers", "answer_index",
-            "explanation", "confidence", "wrong_reasons", "needs_review", "source")})
+            "explanation", "confidence", "wrong_reasons", "diagram_svg",
+            "needs_review", "source")})
     data = {"exam_id": items_doc["exam_id"], "exam_title": items_doc["exam_title"],
             "source_file": items_doc.get("source_file", ""), "items": slim,
             "appendix_figures": appendix}

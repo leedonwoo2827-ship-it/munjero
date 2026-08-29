@@ -38,12 +38,15 @@ def _extract_pdf(src, out_dir, exam_id, title):
 
     doc = fitz.open(src)
     sections, groups, items = pdf_2col.build_items(pdf_2col.document_lines(doc))
+    n_fig = pdf_2col.capture_regions(doc, items, groups,
+                                     os.path.join(out_dir, "figs"))
     meta = {"exam_id": exam_id, "title": title, "round": "",
             "source": os.path.basename(src), "extractor": "pdf_2col_kcci@1"}
     html = render_exam.render(meta, sections, groups, items)
     path = os.path.join(out_dir, "01_extract.html")
     io.open(path, "w", encoding="utf-8").write(html)
     return {"path": path, "items": len(items), "sections": len(sections),
+            "figures": n_fig,
             "review": sum(1 for q in items if render_exam._score(q)[1])}
 
 
@@ -62,26 +65,71 @@ def _extract_hwp(src, out_dir, exam_id, title):
         hwp_ole.decompress(ole.read("BodyText/Section0"), fh["compressed"])))
     items, notes = hwp_kacpta.build_items(hwp_blocks.build_blocks(records))
 
-    figs = _dump_bindata(ole, os.path.join(out_dir, "figs"))
+    figs, dropped = _dump_bindata(ole, os.path.join(out_dir, "figs"))
     meta = {"exam_id": exam_id, "title": title, "round": "",
             "source": os.path.basename(src), "extractor": "hwp_kacpta@1"}
     html = render_kacpta.render(meta, items, figs, notes)
     path = os.path.join(out_dir, "01_extract.html")
     io.open(path, "w", encoding="utf-8").write(html)
     return {"path": path, "items": len(items), "sections": 2,
+            "figures": len(figs), "dropped_figures": dropped,
             "review": sum(1 for q in items if render_kacpta._score(q)[1])}
 
 
-def _dump_bindata(ole, fig_dir):
+def _decoration(im):
+    """시험지 안의 그림은 대부분 문제와 상관없는 페이지 장식이다.
+
+    로고·버튼·머리띠·빈 서식 용지 같은 것들이고, 정작 문제 내용(사업자등록증
+    기재사항, 세금계산서 금액)은 표에 들어 있다. 이런 걸 그대로 실으면
+    화면이 지저분해지고 파일만 커진다(빈 국세청 용지 하나가 456KB 다).
+
+    돌려주는 값은 버리는 이유. 남길 그림이면 None.
+    """
+    from PIL import Image, ImageStat
+
+    g = im.convert("L")
+    w, h = g.size
+    ratio = w / max(h, 1)
+    px = list(g.getdata())
+    ink = sum(1 for p in px if p < 200) / max(len(px), 1) * 100
+
+    if ink < 8:
+        return "빈 서식 용지·워터마크 (잉크 %.1f%%)" % ink
+    if ratio >= 5:
+        return "가로 머리띠·워드마크 (비율 %.1f)" % ratio
+    if ratio >= 2.5 and h <= 200:
+        return "버튼·로고 (%dx%d)" % (w, h)
+    return None
+
+
+def _dump_bindata(ole, fig_dir, keep_all=False):
     """BinData 를 파일로 꺼낸다. 압축은 항목별이라 매직바이트로 형식을 정한다."""
     from . import hwp_ole
 
     os.makedirs(fig_dir, exist_ok=True)
-    out = []
+    out, dropped = [], []
+    seen = {}
     for name in ole.names():
         if not name.startswith("BIN"):
             continue
         data, ext = hwp_ole.bin_data(ole.read(name))
+
+        if not keep_all:
+            try:
+                from PIL import Image
+                why = _decoration(Image.open(io.BytesIO(data)))
+            except Exception:
+                why = None
+            if why:
+                dropped.append((name, why))     # 조용히 버리지 않는다. 세어서 알린다
+                continue
+
+        digest = hash(data)
+        if digest in seen:
+            dropped.append((name, "%s 와 같은 그림" % seen[digest]))
+            continue
+        seen[digest] = name
+
         stem = name.split(".")[0]
         if ext == "bmp":
             try:
@@ -95,4 +143,4 @@ def _dump_bindata(ole, fig_dir):
             target = os.path.join(fig_dir, "%s.%s" % (stem, ext))
             open(target, "wb").write(data)
         out.append((name, "figs/" + os.path.basename(target)))
-    return out
+    return out, dropped

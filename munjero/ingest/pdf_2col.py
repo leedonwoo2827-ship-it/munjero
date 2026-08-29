@@ -34,6 +34,7 @@ class Line:
     size: float
     boxed: bool = False
     image: str | None = None
+    box: tuple | None = None        # 이 줄을 감싼 글상자 (잘라내기용)
 
 
 @dataclass
@@ -48,6 +49,8 @@ class Question:
     section_no: int | None = None
     section: str | None = None
     todos: list = field(default_factory=list)
+    capture: tuple | None = None    # (page, x0, y0, x1, y1) — 원본 조각 이미지
+    figures: list = field(default_factory=list)
 
 
 @dataclass
@@ -55,6 +58,8 @@ class Group:
     covers: tuple
     directive: str = ""
     passage: list = field(default_factory=list)
+    capture: tuple | None = None    # (page, x0, y0, x1, y1) — 공유지문 글상자
+    figures: list = field(default_factory=list)
 
 
 # ── 공백 복원 ─────────────────────────────────────────────────────────────
@@ -106,9 +111,13 @@ def passage_boxes(page) -> list:
     return boxes
 
 
-def in_box(x, y, boxes) -> bool:
-    return any(bx0 - 3 <= x <= bx1 + 3 and by0 + 1 < y < by1 - 1
-               for bx0, by0, bx1, by1 in boxes)
+def in_box(x, y, boxes):
+    """줄이 들어 있는 글상자를 돌려준다. 없으면 None."""
+    for b in boxes:
+        bx0, by0, bx1, by1 = b
+        if bx0 - 3 <= x <= bx1 + 3 and by0 + 1 < y < by1 - 1:
+            return b
+    return None
 
 
 # ── 페이지 → 줄 ───────────────────────────────────────────────────────────
@@ -143,8 +152,9 @@ def page_lines(doc, pno: int) -> list:
         img = "\uE000IMG\uE001" in text
         text = text.replace("\uE000IMG\uE001", "").strip()
         lead = parts[0]
+        b = in_box(lead[0], y, boxes)
         lines.append(Line(pno, col, y, lead[0], text, lead[2], lead[3],
-                          boxed=in_box(lead[0], y, boxes),
+                          boxed=b is not None, box=b,
                           image="inline" if img else None))
     return lines
 
@@ -237,10 +247,16 @@ def build_items(lines: list):
         if ln.image and cur:
             cur.todos.append(("inline-image", "글리프가 비트맵으로 렌더됨",
                               f"pdf:p{ln.page}"))
+            # 글자 하나를 잘라봐야 쓸모없다. 지문 글상자를 통째로 남긴다.
+            if ln.box and not cur.capture:
+                cur.capture = (ln.page,) + tuple(ln.box)
         if mode == "group" and cur_grp is not None:
             # 지시문이 줄바꿈되면 글상자 밖에 남는다. 글상자에 들어가야 지문이다.
             if ln.boxed or cur_grp.passage:
                 cur_grp.passage.append(t)
+                # 공유지문 글상자도 원본 모양 그대로 남긴다 — 편지·서식은 배치가 정보다
+                if ln.box and not cur_grp.capture:
+                    cur_grp.capture = (ln.page,) + tuple(ln.box)
             else:
                 cur_grp.directive = (cur_grp.directive + " " + t).strip()
         elif cur is None:
@@ -258,3 +274,33 @@ def build_items(lines: list):
 
     close()
     return sections, groups, items
+
+
+def capture_regions(doc, items, groups, out_dir, zoom: float = 2.5) -> int:
+    """원본 글상자를 그림으로 남긴다.
+
+    두 경우에 쓴다.
+      · 글리프가 비트맵으로 그려져 텍스트로 복원할 방법이 없는 문항
+      · 여러 문항이 공유하는 지문 — 편지·서식은 줄바꿈과 배치 자체가 정보다
+    버리는 대신 원본 모양 그대로 보여준다. 사람이 보면 바로 안다.
+    """
+    import os
+
+    os.makedirs(out_dir, exist_ok=True)
+    n = 0
+
+    def shot(cap, name):
+        pno, x0, y0, x1, y1 = cap
+        rect = fitz.Rect(x0 - 4, y0 - 4, x1 + 4, y1 + 4)
+        doc[pno].get_pixmap(matrix=fitz.Matrix(zoom, zoom), clip=rect)                 .save(os.path.join(out_dir, name))
+        return "figs/" + name
+
+    for g in groups or []:
+        if g.capture:
+            g.figures.append(shot(g.capture, "group%d-%d.png" % g.covers))
+            n += 1
+    for q in items:
+        if q.capture:
+            q.figures.append(shot(q.capture, "q%s-p%d.png" % (q.no, q.capture[0])))
+            n += 1
+    return n

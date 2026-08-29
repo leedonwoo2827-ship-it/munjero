@@ -7,6 +7,7 @@ import os
 import time
 
 from . import codex_client as C
+from . import svg_sanitize
 
 BATCH = 5          # 배치당 codex 부팅비가 5~10초. 1이면 부팅이 절반, 20이면 출력이 잘린다.
 
@@ -21,7 +22,7 @@ SCHEMA = {
                 "type": "object",
                 "additionalProperties": False,
                 "required": ["id", "answer_index", "explanation",
-                             "confidence", "wrong_reasons"],
+                             "confidence", "wrong_reasons", "diagram_svg"],
                 "properties": {
                     "id": {"type": "string"},
                     "answer_index": {"type": "integer", "minimum": -1, "maximum": 9},
@@ -29,6 +30,7 @@ SCHEMA = {
                     "confidence": {"type": "string",
                                    "enum": ["high", "medium", "low"]},
                     "wrong_reasons": {"type": "array", "items": {"type": "string"}},
+                    "diagram_svg": {"type": ["string", "null"]},
                 },
             },
         }
@@ -48,8 +50,25 @@ PREAMBLE = """당신은 한국 국가공인 자격시험 문제의 정답과 해
    서술형이면 빈 배열로 둔다.
 5. 확신이 없어도 반드시 하나를 고른다. 대신 confidence 를 "low" 로 적는다.
    답을 비우거나 거부하지 마라 — 뒤 공정이 멈춘다.
-6. 웹 검색이나 파일 읽기를 하지 마라. 주어진 텍스트와 네 지식만 쓴다.
-7. 출력은 지정된 JSON 스키마뿐이다. 다른 말을 덧붙이지 마라.
+6. 계산이나 대조가 필요한 해설에는 **마크다운 표**를 쓴다.
+   분개는 차변/대변 표로, 원가는 단계별 계산 표로 보이면 글보다 훨씬 빨리 읽힌다.
+   | 차변 | 금액 | 대변 | 금액 |
+   |---|---|---|---|
+   | 상품 | 5,000,000 | 외상매입금 | 5,000,000 |
+7. **그림이 있어야 설명이 짧아지는 문항에만** diagram_svg 를 채운다.
+   좋은 예 — 위험·비용의 이전 지점, 당사자 사이의 흐름, T계정, 원가 흐름, 배분 구조.
+   나쁜 예 — 단순 암기·어법·용어 문항. 이런 문항은 반드시 null 로 둔다.
+   억지로 그린 도형은 오히려 해설의 신뢰를 떨어뜨린다. 애매하면 null 이다.
+   SVG 규칙:
+     - 반드시 viewBox 를 넣고 width/height 는 넣지 않는다 (반응형이어야 한다)
+     - viewBox 는 "0 0 640 260" 정도. 가로로 길고 낮게 그린다
+     - 쓸 수 있는 요소: svg g path rect circle ellipse line polyline polygon text tspan marker defs
+     - script·style·image·foreignObject·이벤트 속성은 금지다. 넣으면 통째로 버려진다
+     - 색은 var(--brand-600) var(--brand-50) var(--correct) var(--wrong) var(--muted)
+       currentColor none 만 쓴다. 임의의 색상값을 쓰지 마라
+     - 글자는 font-size 13 안팎, text-anchor 로 정렬한다. 한글을 써도 된다
+8. 웹 검색이나 파일 읽기를 하지 마라. 주어진 텍스트와 네 지식만 쓴다.
+9. 출력은 지정된 JSON 스키마뿐이다. 다른 말을 덧붙이지 마라.
 """
 
 
@@ -66,13 +85,32 @@ def _payload(item):
 
 
 def _md_table(t):
-    cols, rows = t.get("columns") or [], t.get("rows") or []
-    out = []
-    if cols:
-        out.append("| " + " | ".join(cols) + " |")
-        out.append("|" + "---|" * len(cols))
-    for r in rows[:20]:
-        out.append("| " + " | ".join(x.replace("\n", " ") for x in r) + " |")
+    """모델에게 넘길 표. 병합 셀은 마크다운으로 표현이 안 되므로 격자로 펼친다."""
+    cells = t.get("cells")
+    if not cells:                                  # 예전 형식 호환
+        cols, rows = t.get("columns") or [], t.get("rows") or []
+        out = []
+        if cols:
+            out.append("| " + " | ".join(cols) + " |")
+            out.append("|" + "---|" * len(cols))
+        for r in rows[:20]:
+            out.append("| " + " | ".join(x.replace("\n", " ") for x in r) + " |")
+        return "\n".join(out)
+
+    n_r, n_c = min(t.get("rows", 0), 24), min(t.get("cols", 0), 14)
+    grid = [["" for _ in range(n_c)] for _ in range(n_r)]
+    for c in cells:
+        r0, c0 = c["r"], c["c"]
+        if r0 >= n_r or c0 >= n_c:
+            continue
+        # 병합된 칸은 같은 값을 채워 넣는다. 모델이 격자로 읽어야 계산이 맞는다.
+        for dr in range(c.get("rs", 1)):
+            for dc in range(c.get("cs", 1)):
+                if r0 + dr < n_r and c0 + dc < n_c:
+                    grid[r0 + dr][c0 + dc] = (c.get("t") or "").replace("\n", " ")
+    out = ["| " + " | ".join(grid[0]) + " |", "|" + "---|" * n_c]
+    for row in grid[1:]:
+        out.append("| " + " | ".join(row) + " |")
     return "\n".join(out)
 
 
@@ -98,11 +136,14 @@ def _validate(items, data):
             ai = -1
         if len(r.get("explanation") or "") < 20:
             return None, "#%s 해설이 너무 짧음" % it["number"]
+        # SVG 는 유일하게 날것으로 화면에 들어가는 값이다. 여기서 반드시 거른다.
+        svg = svg_sanitize.sanitize(r.get("diagram_svg") or "")
         out[it["id"]] = {
             "answer_index": ai,
             "explanation": r["explanation"].strip(),
             "confidence": r.get("confidence", "medium"),
             "wrong_reasons": r.get("wrong_reasons") or [],
+            "diagram_svg": svg,
             "item_hash": it["item_hash"],
             "source": "codex",
         }

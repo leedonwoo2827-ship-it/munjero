@@ -72,19 +72,70 @@ function mdTable(rows) {
   if (cells.length > 1 && cells[1].every(function (c) { return /^:?-{2,}:?$/.test(c || "-"); })) {
     head = cells[0]; cells.splice(0, 2);
   }
-  return '<div class="q-table-wrap"><table class="q-table">'
+  return '<div class="q-table-wrap"><table class="q-table'
+    + (widthOf(head, cells) >= 8 ? " q-table--wide" : "") + '">'
     + (head.length ? "<thead><tr>" + head.map(function (c) { return "<th>" + mdInline(c) + "</th>"; }).join("") + "</tr></thead>" : "")
     + "<tbody>" + cells.map(function (r) {
-        return "<tr>" + r.map(function (c) { return "<td>" + mdInline(c) + "</td>"; }).join("") + "</tr>";
+        return "<tr>" + r.map(function (c) {
+          var cls = (c.trim() && NUMCELL.test(c)) ? ' class="num"' : "";
+          return "<td" + cls + ">" + mdInline(c) + "</td>";
+        }).join("") + "</tr>";
       }).join("") + "</tbody></table></div>";
 }
 
+/* 숫자만 든 칸은 오른쪽 정렬한다 — 금액 대조가 쉬워진다. */
+var NUMCELL = /^[\s\d,.\-()원%]+$/;
+
+function cell(c) {
+  var v = String(c == null ? "" : c);
+  var cls = (v.trim() && NUMCELL.test(v)) ? ' class="num"' : "";
+  return "<td" + cls + ">" + esc(v).replace(/\n/g, "<br>") + "</td>";
+}
+
+function widthOf(head, rows) {
+  return rows.reduce(function (m, r) { return Math.max(m, r.length); }, head.length);
+}
+
+/* 표는 셀 좌표(r,c,rs,cs)로 온다. 행마다 텍스트 배열로 눕히면
+   사업자등록증·세금계산서처럼 병합이 많은 서식이 칸이 어긋난다. */
 function tableHtml(t) {
+  if (!t) return "";
+  if (!t.cells) return legacyTable(t);            // 예전 형식 호환
+
+  var byRow = {};
+  t.cells.forEach(function (c) { (byRow[c.r] = byRow[c.r] || []).push(c); });
+
+  // 열이 많은 서식형 표는 글자를 줄이고 가로 스크롤에 맡긴다
+  var cls = "q-table" + ((t.cols || 0) >= 8 ? " q-table--wide" : "");
+  var h = '<div class="q-table-wrap"><table class="' + cls
+    + '" data-rows="' + (t.rows || 0) + '" data-cols="' + (t.cols || 0) + '">';
+  for (var r = 0; r < (t.rows || 0); r++) {
+    var row = (byRow[r] || []).sort(function (a, b) { return a.c - b.c; });
+    if (!row.length) continue;
+    h += "<tr>";
+    row.forEach(function (c) {
+      var tag = c.th ? "th" : "td";
+      var a = "";
+      if (c.rs > 1) a += ' rowspan="' + c.rs + '"';
+      if (c.cs > 1) a += ' colspan="' + c.cs + '"';
+      var v = String(c.t == null ? "" : c.t);
+      if (!c.th && v.trim() && NUMCELL.test(v)) a += ' class="num"';
+      h += "<" + tag + a + ">" + esc(v).replace(/\n/g, "<br>") + "</" + tag + ">";
+    });
+    h += "</tr>";
+  }
+  return h + "</table></div>";
+}
+
+function legacyTable(t) {
   var cols = t.columns || [], rows = t.rows || [];
-  var h = '<div class="q-table-wrap"><table class="q-table">';
-  if (cols.length) h += "<thead><tr>" + cols.map(function (c) { return "<th>" + esc(c) + "</th>"; }).join("") + "</tr></thead>";
+  if (!cols.length && !rows.length) return "";
+  var cls = "q-table" + (widthOf(cols, rows) >= 8 ? " q-table--wide" : "");
+  var h = '<div class="q-table-wrap"><table class="' + cls + '">';
+  if (cols.length) h += "<thead><tr>" + cols.map(function (c) {
+    return "<th>" + esc(c) + "</th>"; }).join("") + "</tr></thead>";
   h += "<tbody>" + rows.map(function (r) {
-    return "<tr>" + r.map(function (c) { return "<td>" + esc(c).replace(/\n/g, "<br>") + "</td>"; }).join("") + "</tr>";
+    return "<tr>" + r.map(cell).join("") + "</tr>";
   }).join("") + "</tbody></table></div>";
   return h;
 }
@@ -218,8 +269,13 @@ function applyResults() {
       var label = it.answer_type === "free" ? "정답 · 풀이"
         : "해설 (정답 " + (CIRC[it.answer_index] || "?") + ")";
       var why = (it.wrong_reasons || []).filter(function (w) { return w && w.trim(); });
+      /* diagram_svg 는 빌드 시점에 허용목록으로 걸러진 값이다(svg_sanitize.py).
+         화면에서 날것으로 넣는 유일한 값이므로, 거르는 곳을 한 군데로 모아 둔다. */
+      var dia = it.diagram_svg
+        ? '<div class="q-diagram">' + it.diagram_svg + "</div>" : "";
       ex.innerHTML = '<span class="q-explain__label">' + label + "</span>"
         + mdBlocks(it.explanation)
+        + dia
         + (why.length ? '<div class="q-why"><ul>' + why.map(function (w) {
             return "<li>" + mdInline(w) + "</li>"; }).join("") + "</ul></div>" : "");
       ex.classList.add("is-open");

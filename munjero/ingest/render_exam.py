@@ -58,6 +58,7 @@ header.paper .meta b{color:#fff;font-weight:700}
 .data-table th{background:var(--soft2);font-weight:700;color:var(--ink)}
 .figure{margin:12px 0 0}
 .figure img{max-width:100%;border:1px solid var(--line);border-radius:var(--r);background:#fff;padding:6px}
+.figure__cap{margin-top:6px;font-size:12px;color:var(--faint)}
 .answer{margin-top:13px;padding:9px 13px;border:1px dashed var(--line2);border-radius:var(--r);
   font-size:12.5px;color:var(--faint)}
 .answer::before{content:"정답 · 해설 — 아직 없음 (AI 생성 단계에서 채워짐)"}
@@ -159,6 +160,11 @@ def render(meta, sections, groups, items):
             if g.passage:
                 a('<blockquote class="passage" data-boxed="true">%s</blockquote>'
                   % esc("\n".join(g.passage)))
+            # 편지·서식은 줄바꿈과 배치 자체가 정보다. 원본 조각을 함께 남긴다.
+            for src in getattr(g, "figures", []):
+                a('<div class="figure"><img src="%s" alt="공유지문 원본" loading="lazy">'
+                  '<div class="figure__cap">원본 지문 이미지 &mdash; '
+                  "줄바꿈과 배치를 그대로 봅니다.</div></div>" % esc(src))
             a("</section>")
 
         conf, warns = _score(q)
@@ -171,6 +177,10 @@ def render(meta, sections, groups, items):
         if q.passage:
             a('<blockquote class="passage" data-boxed="true">%s</blockquote>'
               % esc("\n".join(q.passage)))
+        for src in q.figures:
+            a('<div class="figure"><img src="%s" alt="원본 조각" loading="lazy">'
+              '<div class="figure__cap">원본에서 잘라낸 조각 — 글자가 이미지로 그려져 있어'
+              ' 텍스트로 옮기지 못한 부분입니다.</div></div>' % esc(src))
         if q.choices:
             a('<ol class="choices">')
             for i, (mk, c) in enumerate(zip(q.markers, q.choices), 1):

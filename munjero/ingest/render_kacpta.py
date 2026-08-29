@@ -35,9 +35,18 @@ EXTRA_CSS = """
 """
 
 
+import re as _re
+
+_NUM = _re.compile(r"^[\s\d,.\-()원%]+$")
+
+
 def _table_html(t):
-    o = ['<table class="data-table" data-rows="%d" data-cols="%d" '
-         'data-src="hwp:Section0#rec%d">' % (t.rows, t.cols, t.rec)]
+    # 열이 많은 서식형 표(사업자등록증 13x11 · 세금계산서 16x20)는
+    # 좁은 칸에 한글이 눌려 깨진다. 글자를 줄이고 가로 스크롤에 맡긴다.
+    wide = " data-table--wide" if t.cols >= 8 else ""
+    o = ['<div class="table-wrap">',
+         '<table class="data-table%s" data-rows="%d" data-cols="%d" '
+         'data-src="hwp:Section0#rec%d">' % (wide, t.rows, t.cols, t.rec)]
     for row in t.grid():
         o.append("<tr>")
         for c in row:
@@ -46,10 +55,12 @@ def _table_html(t):
                 attrs += ' rowspan="%d"' % c["row_span"]
             if c["col_span"] > 1:
                 attrs += ' colspan="%d"' % c["col_span"]
-            body = esc(c["text"]).replace("\n", "<br>")
-            o.append("<td%s>%s</td>" % (attrs, body))
+            txt = c["text"]
+            if txt.strip() and _NUM.match(txt):
+                attrs += ' class="num"'
+            o.append("<td%s>%s</td>" % (attrs, esc(txt).replace("\n", "<br>")))
         o.append("</tr>")
-    o.append("</table>")
+    o.append("</table></div>")
     return "".join(o)
 
 

@@ -79,9 +79,19 @@ body{margin:0;padding:0 0 80px;background:var(--soft);color:var(--body);
 .q-code{margin:12px 0 0;background:#0f172a;color:#e2e8f0;border-radius:var(--r-md);
   padding:13px 16px;overflow-x:auto;font:13.5px/1.5 Consolas,"D2Coding",monospace}
 .q-table-wrap{overflow-x:auto;margin-top:12px}
-.q-table{border-collapse:collapse;font-size:13.5px}
-.q-table th,.q-table td{border:1px solid var(--line-strong);padding:6px 11px;text-align:center}
-.q-table th{background:var(--soft2);font-weight:700;color:var(--ink)}
+.q-table{border-collapse:collapse;font-size:13.5px;width:100%;table-layout:auto}
+/* 한글은 기본값이 글자 단위로 끊긴다 — "전자제 품" 처럼 깨진다.
+   keep-all 로 단어 단위로 끊고, 그래도 넘치는 긴 토큰만 break-word 로 처리한다. */
+.q-table th,.q-table td{border:1px solid var(--line-strong);padding:7px 10px;
+  text-align:left;vertical-align:middle;word-break:keep-all;overflow-wrap:break-word;
+  line-height:1.5}
+.q-table th{background:var(--soft2);font-weight:700;color:var(--ink);text-align:center;
+  white-space:nowrap}
+/* 숫자만 든 칸은 오른쪽으로 — 금액 대조가 쉬워진다 */
+.q-table td.num{text-align:right;font-variant-numeric:tabular-nums}
+/* 열이 많은 서식형 표(사업자등록증·세금계산서)는 글자를 줄이고 가로 스크롤에 맡긴다 */
+.q-table--wide{font-size:12.5px;min-width:720px}
+.q-table--wide th,.q-table--wide td{padding:5px 8px}
 .q-figure{margin-top:12px}
 .q-figure img{max-width:520px;width:100%;border:1px solid var(--line);
   border-radius:var(--r-md);background:#fff;padding:6px}
@@ -125,6 +135,12 @@ body{margin:0;padding:0 0 80px;background:var(--soft);color:var(--body);
 .q-explain ul{margin:.5em 0;padding-left:1.3em}
 .q-explain code{background:var(--soft2);padding:1px 5px;border-radius:4px;
   font:.92em Consolas,monospace}
+/* 해설 도표 — 모델이 만든 SVG. 색은 팔레트 토큰만 쓰게 되어 있다. */
+.q-diagram{margin:14px 0 4px;padding:14px;background:var(--canvas);
+  border:1px solid var(--line);border-radius:var(--r-md);overflow-x:auto}
+.q-diagram__svg{display:block;width:100%;max-width:640px;height:auto;
+  margin:0 auto;color:var(--brand-ink)}
+.q-diagram__svg text{font-family:var(--font);fill:var(--ink)}
 .q-why{margin-top:10px;padding-top:10px;border-top:1px dashed var(--line-strong)}
 .q-why li{margin:.25em 0;font-size:13.5px;color:var(--muted)}
 .q-free-note{margin-top:12px;padding:10px 14px;border:1px dashed var(--line-strong);
