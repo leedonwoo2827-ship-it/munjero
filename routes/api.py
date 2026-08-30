@@ -479,9 +479,43 @@ class ItemPatch(BaseModel):
     passage: str | None = None
     choices: list[str] | None = None
     answer_type: str | None = None
+    explanation: str | None = None  # 저자가 직접 쓴 해설. AI 가 덮어쓰지 않는다
+    assets: list[dict] | None = None  # 표·박스·수식·텍스트·그림. 토큰으로 본문에 놓인다
     drop: bool = False
     resolved: bool = False          # 사람이 보고 괜찮다고 판단한 것
     reviewed: bool | None = None    # 한 문항씩 넘기며 확인한 표시
+
+
+ASSET_KINDS = {"table", "code", "math", "text", "figure"}
+ASSET_MAX = 400_000        # 붙여넣은 그림 한 장. 이보다 크면 화면이 버벅인다
+
+
+def _clean_assets(rows: list) -> list:
+    """화면에서 온 자산을 다듬는다. 사람이 붙이는 것이라 빈 것도 오고,
+    그림은 data: 로 통째로 온다. 종류를 확인하고 크기를 막는다."""
+    out = []
+    for r in rows or []:
+        if not isinstance(r, dict):
+            continue
+        kind = (r.get("kind") or "").strip()
+        tok = (r.get("token") or "").strip()
+        if kind not in ASSET_KINDS or not tok:
+            continue
+        a = {"token": tok, "kind": kind}
+        if kind == "figure":
+            src = (r.get("src") or "")[:ASSET_MAX]
+            if not src:
+                continue
+            a["src"] = src
+            if r.get("caption"):
+                a["caption"] = str(r["caption"])[:300]
+        else:
+            body = str(r.get("md") or r.get("text") or "")[:20_000]
+            if not body.strip():
+                continue
+            a["md" if kind == "table" else "text"] = body
+        out.append(a)
+    return out
 
 
 @router.post("/exam/{exam_id}/items")
@@ -515,6 +549,10 @@ def patch_items(exam_id: str, patches: list[ItemPatch]):
             it["markers"] = it.get("markers") or []
         if q.answer_type is not None:
             it["answer_type"] = q.answer_type
+        if q.explanation is not None:
+            it["explanation"] = q.explanation.strip() or None
+        if q.assets is not None:
+            it["assets"] = _clean_assets(q.assets)
         if q.resolved:
             it["needs_review"] = False
             it["warnings"] = []
@@ -540,11 +578,19 @@ def confirm(exam_id: str):
     d = _load(p["items"])
     if not d["items"]:
         raise HTTPException(400, "문항이 하나도 없습니다.")
+    # items.json 은 기계가 읽는 것이다. 저자가 몇 주 뒤에 고치려면
+    # 사람이 읽고 고칠 수 있는 형태가 함께 있어야 한다.
+    from munjero.build import itemmd
+
+    md = itemmd.write(d, p["items_dir"] if "items_dir" in p
+                      else os.path.dirname(p["items"]))
     m = CFG.load_manifest(exam_id)
     m["confirmed"] = True
     m["confirmed_items"] = len(d["items"])
     CFG.save_manifest(m, exam_id)
-    return _summary(exam_id)
+    out = _summary(exam_id)
+    out["md"] = md
+    return out
 
 
 @router.get("/exam/{exam_id}/paper")
@@ -554,6 +600,23 @@ def paper(exam_id: str):
     if not f:
         raise HTTPException(404, "시험지 HTML 이 없습니다.")
     return FileResponse(f, media_type="text/html")
+
+
+@router.get("/exam/{exam_id}/paper/text")
+def paper_text(exam_id: str):
+    """시험지 HTML 의 글자만. 문항을 확정할 때 옆에 두고 대조하는 원문이다.
+
+    렌더된 화면을 그대로 두면 편집기와 나란히 놓기에 너무 넓다. 글자만
+    뽑아 두면 눈으로 짚어 가며 빠진 곳을 찾을 수 있다.
+    """
+    _exam_or_404(exam_id)
+    f = CFG.find_paper(exam_id)
+    if not f:
+        raise HTTPException(404, "시험지 HTML 이 없습니다.")
+    from munjero.parse.htmltext import to_text
+
+    with open(f, encoding="utf-8", errors="replace") as fh:
+        return {"text": to_text(fh.read()), "name": os.path.basename(f)}
 
 
 @router.get("/exam/{exam_id}/paper/figs/{name}")

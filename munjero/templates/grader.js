@@ -140,6 +140,50 @@ function legacyTable(t) {
   return h;
 }
 
+/* 손으로 붙인 자산 — 본문의 {{t-1}} 자리에 펼친다.
+   토큰을 안 적었으면 발문 뒤에 몰아서 보여 준다. 어디에도 안 나오면
+   붙여 놓고도 사라진 것이 된다. */
+function assetHtml(a) {
+  if (!a) return "";
+  if (a.kind === "figure") {
+    return '<div class="q-figure"><img src="' + esc(a.src) + '" alt="" loading="lazy">'
+      + (a.caption ? '<div class="q-figcap">' + esc(a.caption) + "</div>" : "")
+      + "</div>";
+  }
+  if (a.kind === "table") return mdTable(String(a.md || "").split(/\r?\n/));
+  if (a.kind === "math") {
+    return '<div class="q-math">' + esc(a.text || "") + "</div>";
+  }
+  if (a.kind === "code") {
+    return '<pre class="q-code">' + esc(a.text || "") + "</pre>";
+  }
+  return '<div class="q-note">' + esc(a.text || "") + "</div>";
+}
+
+/* 토큰이 들어간 글은 조각으로 갈라 잇는다 — 글자는 이스케이프하고
+   자산만 HTML 로 넣어야 한다. 통째로 치환하면 본문이 태그로 샌다. */
+function withAssets(it, text) {
+  var s = String(text == null ? "" : text);
+  var by = {};
+  (it.assets || []).forEach(function (a) { by[a.token] = a; });
+  if (!(it.assets || []).length) return esc(s);
+
+  var out = "", last = 0, re = /\{\{\s*([A-Za-z]-\d+)\s*\}\}/g, m;
+  while ((m = re.exec(s))) {
+    out += esc(s.slice(last, m.index));
+    var a = by[m[1]];
+    if (a) { out += assetHtml(a); a._used = true; }
+    else out += esc(m[0]);
+    last = m.index + m[0].length;
+  }
+  return out + esc(s.slice(last));
+}
+
+function leftoverAssets(it) {
+  return (it.assets || []).filter(function (a) { return !a._used; })
+    .map(assetHtml).join("");
+}
+
 function badges(it) {
   var b = [];
   if (it.answer_type === "free") b.push('<span class="q-badge q-badge--free">해설만</span>');
@@ -238,8 +282,14 @@ function render() {
     h.push(badges(it));
     if (it.source && it.source.page) h.push('<span class="q-src">p.' + it.source.page + "</span>");
     h.push("</div>");
-    h.push('<p class="q-stem">' + esc(it.question) + "</p>");
-    if (it.passage) h.push('<div class="q-passage">' + esc(it.passage) + "</div>");
+    // 화면은 거를 때마다 다시 그린다. 쓴 표시를 안 지우면 두 번째 그림부터
+    // 토큰 없는 자산이 사라진다.
+    (it.assets || []).forEach(function (a) { a._used = false; });
+    h.push('<p class="q-stem">' + withAssets(it, it.question) + "</p>");
+    if (it.passage) {
+      h.push('<div class="q-passage">' + withAssets(it, it.passage) + "</div>");
+    }
+    h.push(leftoverAssets(it));
     (it.tables || []).forEach(function (t) { h.push(tableHtml(t)); });
     (it.figures || []).forEach(function (f) {
       h.push('<div class="q-figure"><img src="' + esc(f) + '" alt="" loading="lazy"></div>');

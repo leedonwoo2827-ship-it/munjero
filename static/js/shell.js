@@ -41,6 +41,97 @@ var Edit = (function () {
         sub: "되돌리려면 시험지에서 다시 읽어야 합니다."})) return;
       State.items[i].tables.splice(ti, 1); mark(i); draw();
     },
+    /* 보기 칸 수를 맞춘다. 적힌 것은 그대로 두고 칸만 늘고 준다 —
+       O/X 도 있고 다섯 개짜리도 있어서 시험마다 다르다. */
+    nch: function (i, k) {
+      var it = State.items[i];
+      var cs = it.choices || [];
+      if (k === "OX") {
+        it.markers = ["O", "X"];
+        it.choices = [cs[0] || "O", cs[1] || "X"];
+      } else {
+        var n = +k;
+        if (!(n > 0)) return;
+        it.markers = null;
+        var out = [];
+        for (var c = 0; c < n; c++) out.push(cs[c] == null ? "" : cs[c]);
+        it.choices = out;
+      }
+      it.answer_type = "single";
+      mark(i); draw();
+    },
+    /* ── 자산 : 표 · 코드 · 텍스트 · 수식 · 그림 ───────────────── */
+    addAsset: function (i, kind) {
+      var it = State.items[i];
+      var as = it.assets = it.assets || [];
+      var pre = {table: "t", code: "b", math: "x", text: "s", figure: "g"}[kind];
+      var n = 0;
+      as.forEach(function (a) {
+        var m = /^([a-z])-(\d+)$/.exec(a.token || "");
+        if (m && m[1] === pre) n = Math.max(n, +m[2]);
+      });
+      var a = {token: pre + "-" + (n + 1), kind: kind};
+      if (kind === "figure") {
+        Edit.pickImage(function (src) {
+          a.src = src; as.push(a); Edit.putTokenTo(it, a.token);
+          mark(i); draw();
+        });
+        return;
+      }
+      a[kind === "table" ? "md" : "text"] =
+        kind === "table" ? "| 항목 | 값 |\n| --- | --- |\n|  |  |" : "";
+      as.push(a);
+      Edit.putTokenTo(it, a.token);
+      mark(i); draw();
+    },
+    asset: function (i, ai, k, v) {
+      var a = (State.items[i].assets || [])[ai];
+      if (!a || a[k] === v) return;
+      a[k] = v; mark(i);
+    },
+    dropAsset: async function (i, ai) {
+      var it = State.items[i], a = (it.assets || [])[ai];
+      if (!a) return;
+      if (!await Panel.confirm({title: "{{" + a.token + "}} 를 지울까요?",
+        ok: "지우기", danger: true,
+        sub: "본문에 적어 둔 토큰도 함께 지웁니다."})) return;
+      var re = new RegExp("\\{\\{\\s*" + a.token + "\\s*\\}\\}", "g");
+      ["question", "passage", "explanation"].forEach(function (f) {
+        if (it[f]) it[f] = it[f].replace(re, "").replace(/\n{3,}/g, "\n\n").trim();
+      });
+      it.assets.splice(ai, 1);
+      mark(i); draw();
+    },
+    putToken: function (i, ai) {
+      var it = State.items[i], a = (it.assets || [])[ai];
+      if (!a) return;
+      Edit.putTokenTo(it, a.token, true);
+      mark(i); draw(); toast("{{" + a.token + "}} 를 지문 끝에 넣었습니다");
+    },
+    /* 토큰이 본문 어디에도 없으면 지문 끝에 붙인다. 안 붙이면 자산을
+       만들어 놓고도 어디에도 안 나와서 사라진 것처럼 보인다. */
+    putTokenTo: function (it, tok, force) {
+      var t = "{{" + tok + "}}";
+      var has = [it.question, it.passage, it.explanation].some(function (s) {
+        return (s || "").indexOf(t) >= 0;
+      });
+      if (has && !force) return;
+      it.passage = ((it.passage || "") + "\n" + t).trim();
+    },
+    pickImage: function (cb) {
+      var inp = document.createElement("input");
+      inp.type = "file";
+      inp.accept = "image/*";
+      inp.onchange = function () {
+        var f = inp.files && inp.files[0];
+        if (!f) return;
+        if (f.size > 3 * 1024 * 1024) { toast("3MB 보다 작은 그림을 써 주세요"); return; }
+        var r = new FileReader();
+        r.onload = function () { cb(String(r.result)); };
+        r.readAsDataURL(f);
+      };
+      inp.click();
+    },
     toggleType: function (i) {
       var it = State.items[i];
       it.answer_type = it.answer_type === "single" ? "free" : "single";
@@ -247,6 +338,7 @@ var Shell = (function () {
 
   async function open(id) {
     State.exam = id; State.dirty = {}; reportInfo = null;
+    State.paperText = null;               // 시험이 바뀌면 원문도 바뀐다
     var d = await api("/exam/" + encodeURIComponent(id) + "/items");
     State.items = d.items;
     State.summary = await api("/exam/" + encodeURIComponent(id));
@@ -329,6 +421,18 @@ var Shell = (function () {
     $$("#rev .rev-strip button").forEach(function (b) {
       b.onclick = function () { cursor = +b.getAttribute("data-k"); paintItems(); };
     });
+    var st = $("#srcToggle");
+    if (st) st.onclick = function () { State.srcOpen = !openSrc(); paintItems(); };
+    var sx = $("#srcClose");
+    if (sx) sx.onclick = function () { State.srcOpen = false; paintItems(); };
+    $$("#rev .src-tab button").forEach(function (b) {
+      b.onclick = function () {
+        State.srcMode = b.getAttribute("data-src");
+        paintItems();
+      };
+    });
+    if (openSrc() && (State.srcMode || "text") === "text") loadPaperText();
+
     $("#revPrev").onclick = function () { move(-1); };
     $("#revNext").onclick = function () { move(1); };
     $("#revSkip").onclick = function () { move(1); };
@@ -343,6 +447,23 @@ var Shell = (function () {
       syncRail();
       move(1);
     };
+  }
+
+  function openSrc() { return State.srcOpen !== false; }
+
+  /* 원문은 한 번만 읽어 온다. 문항을 넘길 때마다 다시 받으면 느리다. */
+  var paperPending = false;
+  async function loadPaperText() {
+    if (State.paperText != null || paperPending) return;
+    paperPending = true;
+    try {
+      var r = await api("/exam/" + encodeURIComponent(State.exam) + "/paper/text");
+      State.paperText = r.text || "(원문이 비어 있습니다)";
+    } catch (e) {
+      State.paperText = "원문을 읽지 못했습니다 — " + e.message;
+    }
+    paperPending = false;
+    if (State.view === "map") paintItems();
   }
 
   function move(d) {
@@ -380,7 +501,8 @@ var Shell = (function () {
       .map(function (it) {
         return {id: it.id, number: String(it.number), question: it.question,
                 passage: it.passage || "", choices: it.choices || [],
-                answer_type: it.answer_type, resolved: !!it._resolved};
+                answer_type: it.answer_type, resolved: !!it._resolved,
+                explanation: it.explanation || "", assets: it.assets || []};
       });
     if (!patches.length) { toast("고친 내용이 없습니다"); return null; }
     var r = await jpost("/exam/" + encodeURIComponent(State.exam) + "/items", patches);

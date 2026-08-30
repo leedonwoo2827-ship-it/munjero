@@ -124,7 +124,10 @@ def merge(items_doc, answers_doc):
             it["needs_review"] = True
             it.setdefault("warnings", []).append("answer_stale")
         it["answer_index"] = a.get("answer_index")
-        it["explanation"] = a.get("explanation")
+        # 저자가 문항 화면에서 직접 쓴 해설이 있으면 그게 이긴다.
+        # 사람이 쓴 것을 기계가 덮으면 그 시간이 버려진다.
+        if not (it.get("explanation") or "").strip():
+            it["explanation"] = a.get("explanation")
         it["confidence"] = a.get("confidence")
         it["wrong_reasons"] = a.get("wrong_reasons") or []
         it["diagram_svg"] = a.get("diagram_svg")
@@ -157,7 +160,7 @@ def build(items_doc, answers_doc, out_path, *, base_dir=".", no_cdn=False):
             "tables", "figures", "choices", "markers", "answer_index",
             "explanation", "confidence", "wrong_reasons", "diagram_svg",
             "chapter", "concepts", "point", "level", "difficulty", "misconception",
-            "needs_review", "source")})
+            "assets", "needs_review", "source")})
     data = {"exam_id": items_doc["exam_id"], "exam_title": items_doc["exam_title"],
             "source_file": items_doc.get("source_file", ""), "items": slim,
             "appendix_figures": appendix}

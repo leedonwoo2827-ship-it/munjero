@@ -134,18 +134,47 @@ var Views = (function () {
   }
 
   /* 지금 보고 있는 묶음을 그린다. group = 함께 볼 문항 배열 */
+  /* 왼쪽에 시험지 원문을 둔다. 옮겨 적은 것이 맞는지 눈으로 짚으려면
+     원문이 옆에 있어야 한다. 글자만 볼지 시험지 그대로 볼지는 고른다 —
+     표와 그림은 그려진 쪽이 낫고, 옮겨 적을 때는 글자 쪽이 낫다. */
+  function srcPane() {
+    var url = "/api/exam/" + encodeURIComponent(State.exam) + "/paper";
+    var mode = State.srcMode || "text";
+    var h = ['<div class="src-h"><b>시험지 원문</b>'
+      + '<span class="src-tab">'
+      + '<button class="' + (mode === "text" ? "on" : "") + '" data-src="text">글자</button>'
+      + '<button class="' + (mode === "html" ? "on" : "") + '" data-src="html">시험지</button>'
+      + "</span>"
+      + '<button class="src-x" id="srcClose" title="원문 접기">&times;</button></div>'];
+    if (mode === "html") {
+      h.push('<iframe class="src-frame" src="' + url + '" title="시험지"></iframe>');
+    } else if (State.paperText == null) {
+      h.push('<div class="src-wait">원문을 읽는 중…</div>');
+    } else {
+      h.push('<pre class="src-text" id="srcText">' + esc(State.paperText) + "</pre>");
+    }
+    return h.join("");
+  }
+
   function review(group, pos, total, doneCount, strip) {
     var shared = group.length > 1 ? group[0].passage : null;
+    var open = State.srcOpen !== false;
     var h = ['<div class="rev-top">'];
     h.push('<span class="rev-count"><b>' + pos + "</b> / " + total
       + (group.length > 1 ? " 묶음" : "") + "</span>");
     h.push('<span class="rev-bar"><i style="width:'
       + Math.round(doneCount / Math.max(total, 1) * 100) + '%"></i></span>');
     h.push('<span class="rev-nav">'
+      + '<button class="btn btn--sm" id="srcToggle">'
+      + (open ? "원문 접기" : "원문 펼치기") + "</button>"
       + '<button class="btn btn--sm" id="revPrev">&larr; 이전</button>'
       + '<button class="btn btn--sm" id="revNext">다음 &rarr;</button></span></div>');
 
     h.push('<div class="rev-strip">' + strip + "</div>");
+
+    h.push('<div class="rev-split' + (open ? "" : " solo") + '">');
+    if (open) h.push('<aside class="rev-src">' + srcPane() + "</aside>");
+    h.push('<div class="rev-edit">');
 
     if (shared) {
       h.push('<div class="rev-group"><div class="gh">'
@@ -167,6 +196,7 @@ var Views = (function () {
       + '<span class="spacer"></span>'
       + '<span class="rev-hint"><kbd>&larr;</kbd> <kbd>&rarr;</kbd> 이동 &middot; '
       + "<kbd>Enter</kbd> 확인함</span></div>");
+    h.push("</div></div>");
     return h.join("");
   }
 
@@ -218,6 +248,18 @@ var Views = (function () {
     });
 
     if (it.answer_type === "single") {
+      // 보기 수는 시험마다 다르다. O/X 도 있고 다섯 개짜리도 있다.
+      // 눌러서 칸 수를 맞추게 한다 — 적힌 것은 그대로 두고 칸만 늘고 준다.
+      var n = (it.choices || []).length;
+      var ox = it.markers && it.markers[0] === "O";
+      h.push('<div class="qb-nch">보기'
+        + ["OX", 3, 4, 5].map(function (k) {
+            var on = (k === "OX") ? ox : (!ox && n === k);
+            return '<button class="' + (on ? "on" : "") + '" onclick="Edit.nch('
+              + i + ",'" + k + "')\">" + (k === "OX" ? "O · X" : k + "개") + "</button>";
+          }).join("")
+        + '<button onclick="Edit.nch(' + i + "," + (n + 1) + ')">칸 추가</button></div>');
+
       h.push('<ul class="qb-choices">');
       (it.choices || []).forEach(function (c, ci) {
         h.push('<li><span class="mk">'
@@ -228,8 +270,58 @@ var Views = (function () {
       });
       h.push("</ul>");
     }
+
+    h.push(assetBox(it, i));
+
+    h.push('<div class="qb-exp"><div class="qb-lab">해설 <span>비워 두면 AI가 '
+      + "씁니다. 여기 적으면 그대로 씁니다</span></div>"
+      + '<div data-edit contenteditable data-ph="해설을 적어 주세요" '
+      + 'onblur="Edit.f(' + i + ",'explanation',this.innerText)\">"
+      + esc(it.explanation || "") + "</div></div>");
+
     h.push("</div>");
     return h.join("");
+  }
+
+  var KINDS = [["table", "표"], ["code", "코드·박스"], ["text", "텍스트"],
+               ["math", "수식"], ["figure", "그림"]];
+
+  /* 표 · 코드 · 텍스트 · 수식 · 그림을 손으로 붙인다.
+     본문에 {{t-1}} 을 적으면 그 자리에 펼쳐진다. 안 적으면 발문 뒤에 붙는다. */
+  function assetBox(it, i) {
+    var h = ['<div class="qb-assets"><div class="qb-lab">자산'
+      + '<span>본문에 토큰을 적으면 그 자리에 들어갑니다</span></div>'
+      + '<div class="qb-abar">'
+      + KINDS.map(function (k) {
+          return '<button onclick="Edit.addAsset(' + i + ",'" + k[0] + "')\">+ "
+            + k[1] + "</button>";
+        }).join("")
+      + "</div>"];
+
+    (it.assets || []).forEach(function (a, ai) {
+      var name = (KINDS.filter(function (k) { return k[0] === a.kind; })[0]
+                  || ["", a.kind])[1];
+      h.push('<div class="ast"><div class="ast-h">'
+        + '<button class="tok" onclick="Edit.putToken(' + i + "," + ai
+        + ')" title="본문 끝에 토큰을 넣습니다">{{' + esc(a.token) + "}}</button>"
+        + '<span class="knd">' + esc(name) + "</span>"
+        + '<button class="x" onclick="Edit.dropAsset(' + i + "," + ai
+        + ')" title="이 자산을 지웁니다">&times;</button></div>');
+      if (a.kind === "figure") {
+        h.push('<img class="ast-img" src="' + esc(a.src) + '" alt="">'
+          + '<input class="ast-cap" value="' + esc(a.caption || "")
+          + '" placeholder="그림 설명(선택)" onchange="Edit.asset(' + i + "," + ai
+          + ",'caption',this.value)\">");
+      } else {
+        var key = a.kind === "table" ? "md" : "text";
+        h.push('<textarea class="ast-t" rows="4" data-ph="'
+          + (a.kind === "table" ? "| 계정 | 금액 |" : "")
+          + '" onchange="Edit.asset(' + i + "," + ai + ",'" + key + "',this.value)\">"
+          + esc(a[key] || "") + "</textarea>");
+      }
+      h.push("</div>");
+    });
+    return h.join("") + "</div>";
   }
 
   /* 표는 셀 좌표를 유지한다. 병합을 잃으면 서식이 통째로 깨진다. */

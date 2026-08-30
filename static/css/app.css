@@ -671,3 +671,81 @@ table.grid td { padding: 0; }
 .clock .left { font-size: 13.5px; color: var(--text-2); }
 .clock .dot { width: 8px; height: 8px; border-radius: 50%;
   background: var(--sky-400); animation: pulse 1.2s infinite; align-self: center; }
+
+/* ── 문항 확정 : 왼쪽 원문 · 오른쪽 편집 ─────────────────────────── */
+/* 옮겨 적은 것이 맞는지 눈으로 짚으려면 원문이 옆에 있어야 한다. */
+.rev-split { display: grid; grid-template-columns: minmax(0, 380px) minmax(0, 1fr);
+  gap: 14px; align-items: start; }
+.rev-split.solo { grid-template-columns: 1fr; }
+.rev-src { position: sticky; top: 12px; max-height: calc(100vh - 130px);
+  display: flex; flex-direction: column; background: var(--white);
+  border: 1px solid var(--hairline); border-radius: var(--r-lg); overflow: hidden; }
+.src-h { display: flex; align-items: center; gap: 8px; padding: 9px 12px;
+  border-bottom: 1px solid var(--hairline); font-size: 12.5px; }
+.src-h b { color: var(--ink); }
+.src-tab { margin-left: auto; display: flex; gap: 4px; }
+.src-tab button { border: 1px solid var(--hairline); background: var(--white);
+  color: var(--text-2); border-radius: 99px; padding: 3px 11px; font-size: 11.5px;
+  cursor: pointer; }
+.src-tab button.on { background: var(--brand); border-color: var(--brand); color: #fff; }
+.src-x { border: 0; background: transparent; color: var(--text-3); cursor: pointer;
+  font-size: 17px; line-height: 1; padding: 0 2px; }
+.src-x:hover { color: var(--ink); }
+.src-text { margin: 0; flex: 1; overflow: auto; padding: 12px 14px;
+  font: 12px/1.85 ui-monospace, Consolas, "D2Coding", monospace;
+  color: var(--text-2); white-space: pre-wrap; word-break: break-word;
+  user-select: text; }
+.src-frame { flex: 1; width: 100%; border: 0; background: #fff; }
+.src-wait { padding: 22px 14px; font-size: 12.5px; color: var(--text-3); }
+
+/* ── 보기 칸 수 : O/X · 3 · 4 · 5 ─────────────────────────────── */
+.qb-nch { display: flex; align-items: center; gap: 5px; margin: 10px 0 4px;
+  font-size: 11.5px; color: var(--text-3); }
+.qb-nch button { border: 1px solid var(--hairline); background: var(--white);
+  color: var(--text-2); border-radius: 99px; padding: 2px 10px; font-size: 11.5px;
+  cursor: pointer; margin-left: 3px; }
+.qb-nch button:hover { border-color: var(--brand); color: var(--brand); }
+.qb-nch button.on { background: var(--brand-wash); border-color: var(--brand);
+  color: var(--brand); font-weight: 700; }
+
+/* ── 자산 : 표 · 코드 · 텍스트 · 수식 · 그림 ──────────────────── */
+.qb-lab { font-size: 11.5px; font-weight: 700; color: var(--text-2);
+  margin: 14px 0 6px; }
+.qb-lab span { font-weight: 400; color: var(--text-3); margin-left: 6px; }
+.qb-abar { display: flex; flex-wrap: wrap; gap: 5px; }
+.qb-abar button { border: 1px dashed var(--hairline-2); background: var(--white);
+  color: var(--text-2); border-radius: var(--r-sm); padding: 4px 11px;
+  font-size: 12px; cursor: pointer; }
+.qb-abar button:hover { border-style: solid; border-color: var(--brand);
+  color: var(--brand); background: var(--brand-wash); }
+.ast { margin-top: 8px; border: 1px solid var(--hairline);
+  border-radius: var(--r-sm); background: var(--paper); padding: 8px 10px; }
+.ast-h { display: flex; align-items: center; gap: 7px; margin-bottom: 6px; }
+.ast-h .tok { border: 0; background: var(--brand-wash); color: var(--brand);
+  border-radius: 99px; padding: 2px 9px; cursor: pointer;
+  font: 700 11px/1.6 ui-monospace, Consolas, monospace; }
+.ast-h .tok:hover { background: var(--brand); color: #fff; }
+.ast-h .knd { font-size: 11.5px; color: var(--text-3); }
+.ast-h .x { margin-left: auto; border: 0; background: transparent;
+  color: var(--text-3); font-size: 16px; line-height: 1; cursor: pointer; }
+.ast-h .x:hover { color: var(--warn); }
+.ast-t { width: 100%; border: 1px solid var(--hairline); border-radius: var(--r-sm);
+  padding: 7px 9px; background: var(--white); color: var(--ink);
+  font: 12px/1.7 ui-monospace, Consolas, "D2Coding", monospace; resize: vertical; }
+.ast-t:focus { outline: 0; border-color: var(--brand); }
+.ast-img { max-width: 100%; border-radius: var(--r-sm); display: block;
+  border: 1px solid var(--hairline); }
+.ast-cap { width: 100%; margin-top: 6px; border: 1px solid var(--hairline);
+  border-radius: var(--r-sm); padding: 5px 8px; font-size: 12px;
+  background: var(--white); color: var(--ink); }
+
+/* ── 해설 : 비워 두면 AI 가 쓴다 ──────────────────────────────── */
+.qb-exp [data-edit] { border: 1px solid var(--hairline); border-radius: var(--r-sm);
+  padding: 8px 10px; background: var(--white); min-height: 40px; font-size: 13px;
+  line-height: 1.75; }
+.qb-exp [data-edit]:empty::before { content: attr(data-ph); color: var(--text-3); }
+
+@media (max-width: 1200px) {
+  .rev-split { grid-template-columns: 1fr; }
+  .rev-src { position: static; max-height: 320px; }
+}

@@ -296,8 +296,13 @@ def cmd_map(args):
 
     _p("[02] " + P.report(doc))
     _p("")
+    # 사람이 읽는 형태도 함께. 화면 없이 명령줄로만 쓰는 사람도 있다.
+    from .build import itemmd
+    md = itemmd.write(doc, os.path.dirname(p["items"]))
+
     _p("  시험지  %s" % paper)
     _p("  문항    %s" % p["items"])
+    _p("  읽기용  %s" % md)
     _p("")
     _p("  ── 확인해 주세요 ──────────────────────────────")
     _p("  시험지 HTML 을 열어 문항 번호·보기·지문이 제자리에 있는지 봅니다.")
